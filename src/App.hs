@@ -32,12 +32,16 @@ main = getArgs >>= dispatch
 
 dispatch :: [String] -> IO ()
 dispatch [] = putStrLn "Usage: jira [global options] <command> [command options]"
-dispatch ("init" : _)       = doInitSetup
+dispatch ("init" : _)       = doInitSetup >> configTest
 dispatch ("test" : _)       = configTest
 dispatch ("new" : args)     = handleCreateIssue args
 dispatch ("show" : args)    = handleShowIssue args
+dispatch ("open" : args)    = handleOpenIssue args
 dispatch ("search" : args)  = handleSearch args
 dispatch ("myopen" : args)  = handleMyOpen
+dispatch ("start" : args)   = handleStartIssue args
+dispatch ("co" : args)      = handleCheckout args
+dispatch ("newnow" : args)  = handleCreateAndStart args
 
 configTest :: IO ()
 configTest = do
@@ -47,17 +51,19 @@ configTest = do
     handleError e = putStrLn $ "Error while checking config:\n" ++ show e
 
 handleCreateIssue :: [String] -> IO ()
-handleCreateIssue (projectKey : issueType : summary : _) = run $ do
-  issueKey <- liftJira $ createIssue $ IssueCreationData
-    (ProjectKey projectKey)
-    (IssueTypeName issueType)
-    summary
-  liftIO $ putStrLn $ "Issue created: " ++ issueKey
+handleCreateIssue (issueTypeName : summary : _) = run $
+  createIssue' issueTypeName summary
 
 handleShowIssue :: [String] -> IO ()
 handleShowIssue (issueKey : _) = run $ do
-  issue <- liftJira . getIssue =<< toIssueIdentifier issueKey
+  issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
   liftIO $ print issue
+
+handleOpenIssue :: [String] -> IO ()
+handleOpenIssue (issueKey : _) = run $ do
+  issue <- parseIssueIdentifier issueKey
+  url   <- issueBrowserUrl issue
+  openInBrowser url
 
 handleSearch :: [String] -> IO ()
 handleSearch (jql : _) = run $ do
@@ -75,10 +81,59 @@ handleMyOpen = run $ do
           ++ config^.configProject
   liftIO $ handleSearch [jql]
 
+handleStartIssue :: [String] -> IO ()
+handleStartIssue (issueKey : _) = run $ do
+  issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
+  let issueTypeName = view (iType.itName) issue
+  liftIO $ ask "Short description for branch? > "
+  branchDescription <- liftIO getLine'
+  let branchName = view iKey issue ++ "-" ++ branchDescription
+  baseBranchName <- view configDevelopBranch <$> getConfig
+  runGit' $ newBranch (branchType issueTypeName ++ "/" ++ branchName) baseBranchName
+  liftIO $ handleCheckout [issueKey]
+  where
+    branchType "Bug" = "bugfix"
+    branchType _     = "feature"
+
+handleCheckout :: [String] -> IO ()
+handleCheckout (issueKey : _) = run $ do
+  runGit' $ do
+    branch <- liftMaybe (App.Git.GitException $ "Branch for issue not found: " ++ issueKey) =<<
+              branchForIssueKey issueKey
+    checkoutBranch branch
+
+handleCreateAndStart :: [String] -> IO ()
+handleCreateAndStart (issueTypeName : summary : _) = run $ do
+  issueKey <- createIssue' issueTypeName summary
+  liftIO $ handleStartIssue [issueKey]
+
+issueBrowserUrl :: IssueIdentifier -> AppM String
+issueBrowserUrl issue = do
+  baseUrl <- view configBaseUrl <$> getConfig
+  case issue of
+    IssueKey k -> return $ baseUrl ++ "/browse/" ++ k
+    IssueId  i -> return $ baseUrl ++ "/browse/" ++ show i
+
+createIssue' :: String -> String -> AppM String
+createIssue' issueTypeName summary = do
+  config <- getConfig
+  let project   = ProjectKey $ view configProject config
+      issueType = parseIssueType issueTypeName
+  issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
+  liftIO $ handleOpenIssue [issueKey]
+  return issueKey
+
 -- CLI parsing
 
-toIssueIdentifier :: String -> AppM IssueIdentifier
-toIssueIdentifier s = do
+parseIssueType :: String -> IssueTypeIdentifier
+parseIssueType "b" = IssueTypeName "Bug"
+parseIssueType "f" = IssueTypeName "New Feature"
+parseIssueType "i" = IssueTypeName "Improvement"
+parseIssueType "t" = IssueTypeName "Task"
+parseIssueType s   = IssueTypeName s
+
+parseIssueIdentifier :: String -> AppM IssueIdentifier
+parseIssueIdentifier s = do
   project <- view configProject <$> getConfig
   let defaultPrefix = project ++ "-"
       result        = mapLeft (const parseException) $
@@ -112,3 +167,8 @@ liftJira m = do
   jiraConfig <- liftIO $ getJiraConfig config
   result <- liftIO $ runJira jiraConfig m
   either (throwError . JiraApiException) return result
+
+runGit' :: GitM a -> AppM a
+runGit' m = liftEitherIO $ mapLeft convertException <$> runGit m
+  where
+    convertException (App.Git.GitException s) = App.Types.GitException s

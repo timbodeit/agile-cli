@@ -46,5 +46,6 @@ executable jira-cli
                      , text
                      , regexpr
                      , parsec
+                     , containers
   hs-source-dirs:      src
   default-language:    Haskell2010

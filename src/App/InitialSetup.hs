@@ -12,8 +12,6 @@ import qualified Data.ByteString.Lazy    as LBS
 import           Data.Either.Combinators
 import           Data.List
 import           Data.String.Conversions
-import           GHC.IO.Handle
-import           GHC.IO.Handle.FD
 import           Jira.API
 import           Network.HTTP.Client
 import           System.Process
@@ -27,7 +25,7 @@ doInitSetup = do
                  Right (_, c) -> return c
   doInitAuth config >>= maybe handleAuthError writeConfigToLocalDir
   where
-    writeConfigToLocalDir = LBS.writeFile ".jiracli" . prettyEncodeConfig
+    writeConfigToLocalDir = LBS.writeFile configFileName . prettyEncodeConfig
     handleAuthError = putStrLn "Authentication error"
 
 doSetupConfigInteractively :: IO Config
@@ -44,21 +42,21 @@ doSetupConfigInteractively = do
   signingKey <- getLine'
   ask "Git develop branch name? > "
   developBranch <- getLine'
+  ask "Command to open URLs? (e.g. open on OS X) > "
+  openCommand <- getLine'
 
   return $ Config baseUrl
                   username
                   project
                   developBranch
+                  openCommand
                   consumerKey
                   signingKey
                   "" -- Access Token (unknown yet)
                   "" -- Access Token Secret (unknown yet)
-  where
-    ask q = putStr q >> hFlush stdout
-    getLine' = trim <$> getLine
 
 doInitAuth :: Config -> IO (Maybe Config)
-doInitAuth config = do
+doInitAuth config =
   doGetAccessToken >$$< \(token, tokenSecret) ->
       config & configOAuthAccessToken  .~ cs token
              & configOAuthAccessSecret .~ cs tokenSecret
@@ -74,7 +72,7 @@ doInitAuth config = do
       let authUrl = authorizeUrl oauth requestToken
       putStrLn "Please open the following link in your browser and log in."
       putStrLn "Hit enter when you are finished."
-      createProcess $ shell $ "if hash open; then open '" ++ authUrl ++ "'; fi"
+      openInBrowser' authUrl config
       print authUrl
       getChar
       accessToken <- getAccessToken oauth requestToken manager

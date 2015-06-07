@@ -19,6 +19,7 @@ data Config = Config { _configBaseUrl             :: String
                      , _configUsername            :: String
                      , _configProject             :: String
                      , _configDevelopBranch       :: String
+                     , _configBrowserCommand      :: String
                      , _configOAuthConsumerKey    :: String
                      , _configOAuthSigningKeyPath :: String
                      , _configOAuthAccessToken    :: String
@@ -34,6 +35,7 @@ data AppException = JiraApiException JiraException
                   | ConfigException String
                   | AuthException String
                   | UserInputException String
+                  | GitException String
                   deriving (Show, Typeable)
 
 instance Exception AppException

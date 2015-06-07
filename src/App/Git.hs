@@ -3,11 +3,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 
-module App.Git ( runGit
-               , newBranch
-               , originUrl
-               , resolveBranch
-               ) where
+module App.Git where
 
 import           App.Util
 
@@ -17,10 +13,12 @@ import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Data.Git
 import           Data.Git.Revision
+import           Data.List
 import           Data.Maybe
+import qualified Data.Set                   as Set
 import           Data.String.Conversions
 import qualified Data.Text                  as T
-import           Shelly
+import           Shelly                     hiding (find)
 import           Text.RegexPR
 
 type GitCommand = T.Text
@@ -50,6 +48,25 @@ newBranch newBranch baseBranch = do
   withGit $ \git ->
     liftIO $ branchWrite git (RefName newBranch) baseRef
 
+branchForIssueKey :: String -> GitM (Maybe RefName)
+branchForIssueKey issueKey = find containsKey <$> getBranches
+  where
+    containsKey (RefName s) = issueKey `isInfixOf` s
+
+checkoutBranch :: RefName -> GitM ()
+checkoutBranch branch =
+  checkoutBranch' branch `catchError` const (stashAndCheckoutBranch branch)
+
+checkoutBranch' :: RefName -> GitM ()
+checkoutBranch' (RefName branch) = void $
+  git "checkout" [cs branch]
+
+stashAndCheckoutBranch :: RefName -> GitM ()
+stashAndCheckoutBranch branch = void $ do
+  git "stash" []
+  checkoutBranch' branch
+  git "stash" ["pop"]
+
 resolveBranch :: String -> GitM Ref
 resolveBranch branch = withGit $ \git -> do
   rev <- liftIO $ resolveRevision git (Revision branch [])
@@ -60,6 +77,11 @@ originUrl = do
   output <- git "remote" ["show", "-n", "origin"]
   let url = cs output =~~ "URL:\\s*(\\S+)"
   liftMaybe (GitException "Unable to parse origin URL") url
+
+getBranches :: GitM [RefName]
+getBranches = do
+  output <- cs <$> git "branch" ["--list"]
+  return . map (RefName . trim) $ lines output
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
 git command options = do

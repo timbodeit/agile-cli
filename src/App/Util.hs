@@ -1,10 +1,16 @@
 module App.Util where
 
+import           App.Types
+
+import           System.Process
+import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Either
 import           Data.Char
+import           GHC.IO.Handle
+import           GHC.IO.Handle.FD
 
 hoistEitherIO :: IO (Either e a) -> EitherT e IO a
 hoistEitherIO = hoistEither <=< liftIO
@@ -39,3 +45,14 @@ trim = go . go
 
 toMaybe :: Either e a -> Maybe a
 toMaybe = either (const Nothing) Just
+
+openInBrowser :: String -> AppM ()
+openInBrowser url = getConfig >>= liftIO . openInBrowser' url
+
+openInBrowser' :: String -> Config -> IO ()
+openInBrowser' url config =
+  let command = view configBrowserCommand config
+  in  void . createProcess $ proc command [url]
+
+ask q = putStr q >> hFlush stdout
+getLine' = trim <$> getLine
