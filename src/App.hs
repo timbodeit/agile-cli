@@ -56,7 +56,7 @@ handleCreateIssue (projectKey : issueType : summary : _) = run $ do
 
 handleShowIssue :: [String] -> IO ()
 handleShowIssue (issueKey : _) = run $ do
-  issue <- liftJira $ getIssue (IssueKey issueKey)
+  issue <- liftJira . getIssue =<< toIssueIdentifier issueKey
   liftIO $ print issue
 
 handleSearch :: [String] -> IO ()
@@ -77,16 +77,24 @@ handleMyOpen = run $ do
 
 -- CLI parsing
 
-issueIdentifier :: String -> Maybe IssueIdentifier
-issueIdentifier = IssueKey <$< (toMaybe . parse issueParser "")
+toIssueIdentifier :: String -> AppM IssueIdentifier
+toIssueIdentifier s = do
+  project <- view configProject <$> getConfig
+  let defaultPrefix = project ++ "-"
+      result        = mapLeft (const parseException) $
+                      parse (issueParser defaultPrefix) "" s
+  IssueKey <$> liftEither result
   where
-    issueParser = wholeIssueParser <|> ("EAS-" ++) <$> numberParser
+    issueParser prefix = wholeIssueParser <|>
+                         (prefix ++) <$> numberParser
     numberParser = many1 digit <* eof
     wholeIssueParser = do
       project <- manyTill letter (char '-')
       number  <- numberParser
       eof
       return $ project ++ "-" ++ number
+    parseException = UserInputException $
+      "Not a valid issue identifier: " ++ s
 
 -- App Monad
 

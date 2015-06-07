@@ -33,6 +33,7 @@ $(deriveJSON defaultOptions { fieldLabelModifier = drop 7
 data AppException = JiraApiException JiraException
                   | ConfigException String
                   | AuthException String
+                  | UserInputException String
                   deriving (Show, Typeable)
 
 instance Exception AppException
