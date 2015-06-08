@@ -16,6 +16,7 @@ import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Data.Aeson
 import           Data.Either.Combinators
+import           Data.Git
 import           Data.List
 import           Data.Maybe
 import           Data.String.Conversions
@@ -52,7 +53,7 @@ configTest = do
 
 handleCreateIssue :: [String] -> IO ()
 handleCreateIssue (issueTypeName : summary : _) = run $
-  createIssue' issueTypeName summary
+  doCreateIssue issueTypeName summary
 
 handleShowIssue :: [String] -> IO ()
 handleShowIssue (issueKey : _) = run $ do
@@ -83,20 +84,11 @@ handleMyOpen = run $ do
 
 handleStartIssue :: [String] -> IO ()
 handleStartIssue (issueKey : _) = run $ do
-  issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
-  let issueTypeName = view (iType.itName) issue
-  liftIO $ ask "Short description for branch? > "
-  branchDescription <- liftIO getLine'
-  let branchName = view iKey issue ++ "-" ++ branchDescription
-  baseBranchName <- view configDevelopBranch <$> getConfig
-  runGit' $ newBranch (branchType issueTypeName ++ "/" ++ branchName) baseBranchName
-  liftIO $ handleCheckout [issueKey]
-  where
-    branchType "Bug" = "bugfix"
-    branchType _     = "feature"
+  branch <- doCreateBranchForIssueKey issueKey
+  runGit' $ checkoutBranch branch
 
 handleCheckout :: [String] -> IO ()
-handleCheckout (issueKey : _) = run $ do
+handleCheckout (issueKey : _) = run $
   runGit' $ do
     branch <- liftMaybe (App.Git.GitException $ "Branch for issue not found: " ++ issueKey) =<<
               branchForIssueKey issueKey
@@ -104,8 +96,44 @@ handleCheckout (issueKey : _) = run $ do
 
 handleCreateAndStart :: [String] -> IO ()
 handleCreateAndStart (issueTypeName : summary : _) = run $ do
-  issueKey <- createIssue' issueTypeName summary
+  issueKey <- doCreateIssue issueTypeName summary
   liftIO $ handleStartIssue [issueKey]
+
+--
+
+doCheckoutBranchForIssueKey :: String -> AppM RefName
+doCheckoutBranchForIssueKey issueKey =
+  runGit' $ do
+    branch <- liftMaybe (App.Git.GitException $ "Branch for issue not found: " ++ issueKey) =<<
+              branchForIssueKey issueKey
+    checkoutBranch branch
+    return branch
+
+doCreateBranchForIssueKey :: String -> AppM RefName
+doCreateBranchForIssueKey issueKey = do
+  issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
+  let issueTypeName = view (iType.itName) issue
+  liftIO $ ask "Short description for branch? > "
+  branchDescription <- liftIO getLine'
+  baseBranchName <- view configDevelopBranch <$> getConfig
+  let branchSuffix = view iKey issue ++ "-" ++ branchDescription
+      branchName = branchType issueTypeName ++ "/" ++ branchSuffix
+  runGit' $ newBranch branchName baseBranchName
+  return $ RefName branchName
+  where
+    branchType "Bug" = "bugfix"
+    branchType _     = "feature"
+
+doCreateIssue :: String -> String -> AppM String
+doCreateIssue issueTypeName summary = do
+  config <- getConfig
+  let project   = ProjectKey $ view configProject config
+      issueType = parseIssueType issueTypeName
+  issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
+  liftIO $ handleOpenIssue [issueKey]
+  return issueKey
+
+--
 
 issueBrowserUrl :: IssueIdentifier -> AppM String
 issueBrowserUrl issue = do
@@ -113,15 +141,6 @@ issueBrowserUrl issue = do
   case issue of
     IssueKey k -> return $ baseUrl ++ "/browse/" ++ k
     IssueId  i -> return $ baseUrl ++ "/browse/" ++ show i
-
-createIssue' :: String -> String -> AppM String
-createIssue' issueTypeName summary = do
-  config <- getConfig
-  let project   = ProjectKey $ view configProject config
-      issueType = parseIssueType issueTypeName
-  issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
-  liftIO $ handleOpenIssue [issueKey]
-  return issueKey
 
 -- CLI parsing
 
