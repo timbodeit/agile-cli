@@ -35,14 +35,20 @@ dispatch :: [String] -> IO ()
 dispatch [] = putStrLn "Usage: jira [global options] <command> [command options]"
 dispatch ("init" : _)       = doInitSetup >> configTest
 dispatch ("test" : _)       = configTest
-dispatch ("new" : args)     = handleCreateIssue args
+
 dispatch ("show" : args)    = handleShowIssue args
 dispatch ("open" : args)    = handleOpenIssue args
-dispatch ("search" : args)  = handleSearch args
 dispatch ("myopen" : args)  = handleMyOpen
+dispatch ("search" : args)  = handleSearch args
+
+dispatch ("new" : args)     = handleCreateIssue args
 dispatch ("start" : args)   = handleStartIssue args
-dispatch ("co" : args)      = handleCheckout args
+dispatch ("resolve" : args) = handleResolveIssue args
+dispatch ("close" : args)   = handleCloseIssue args
+dispatch ("reopen" : args)  = handleReopenIssue args
+
 dispatch ("newnow" : args)  = handleCreateAndStart args
+dispatch ("co" : args)      = handleCheckout args
 
 configTest :: IO ()
 configTest = do
@@ -86,6 +92,19 @@ handleStartIssue :: [String] -> IO ()
 handleStartIssue (issueKey : _) = run $ do
   branch <- doCreateBranchForIssueKey issueKey
   runGit' $ checkoutBranch branch
+  liftJira . startProgress =<< parseIssueIdentifier issueKey
+
+handleResolveIssue :: [String] -> IO ()
+handleResolveIssue (issueKey : _) = run $
+  liftJira . resolveIssue =<< parseIssueIdentifier issueKey
+
+handleCloseIssue :: [String] -> IO ()
+handleCloseIssue (issueKey : _) = run $
+  liftJira . closeIssue =<< parseIssueIdentifier issueKey
+
+handleReopenIssue :: [String] -> IO ()
+handleReopenIssue (issueKey : _) = run $
+  liftJira . reopenIssue =<< parseIssueIdentifier issueKey
 
 handleCheckout :: [String] -> IO ()
 handleCheckout (issueKey : _) = run $
