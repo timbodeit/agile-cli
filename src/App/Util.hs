@@ -18,6 +18,12 @@ hoistEitherIO = hoistEither <=< liftIO
 liftMaybe :: (MonadError e m) => e -> Maybe a -> m a
 liftMaybe ex = maybe (throwError ex) return
 
+orThrow :: (MonadError e m) => Maybe a -> e -> m a
+orThrow = flip liftMaybe
+
+orThrowM :: (MonadError e m) => m (Maybe a) -> e -> m a
+orThrowM m e = m >>= liftMaybe e
+
 liftEither :: (MonadError e m) => Either e a -> m a
 liftEither = either throwError return
 

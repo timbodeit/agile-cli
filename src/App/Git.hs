@@ -48,11 +48,6 @@ newBranch newBranch baseBranch = do
   withGit $ \git ->
     liftIO $ branchWrite git (RefName newBranch) baseRef
 
-branchForIssueKey :: String -> GitM (Maybe RefName)
-branchForIssueKey issueKey = find containsKey <$> getBranches
-  where
-    containsKey (RefName s) = issueKey `isInfixOf` s
-
 checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
   checkoutBranch' branch `catchError` const (stashAndCheckoutBranch branch)
@@ -70,18 +65,25 @@ stashAndCheckoutBranch branch = void $ do
 resolveBranch :: String -> GitM Ref
 resolveBranch branch = withGit $ \git -> do
   rev <- liftIO $ resolveRevision git (Revision branch [])
-  liftMaybe (GitException $ "Unknown branch: " ++ branch) rev
+  rev `orThrow` GitException ("Unknown branch: " ++ branch)
 
 originUrl :: GitM String
 originUrl = do
   output <- git "remote" ["show", "-n", "origin"]
-  let url = cs output =~~ "URL:\\s*(\\S+)"
-  liftMaybe (GitException "Unable to parse origin URL") url
+  cs output =~~ "URL:\\s*(\\S+)"
+    `orThrow` GitException "Unable to parse origin URL"
 
 getBranches :: GitM [RefName]
 getBranches = do
   output <- cs <$> git "branch" ["--list"]
   return . map (RefName . trim) $ lines output
+
+getCurrentBranch :: GitM (Maybe RefName)
+getCurrentBranch = do
+  output <- git "rev-parse" ["--abbrev-ref", "HEAD"]
+  return $ case trim (cs output) of
+    "HEAD"     -> Nothing
+    branchName -> Just $ RefName branchName
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
 git command options = do
