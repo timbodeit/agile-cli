@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
+module App.CLI (dispatch) where
 
 import           App.Config
 import           App.Git
@@ -27,9 +27,6 @@ import           System.Environment
 import           System.Process
 import           Text.Parsec
 import           Text.Parsec.Char
-
-main :: IO ()
-main = getArgs >>= dispatch
 
 dispatch :: [String] -> IO ()
 dispatch [] = putStrLn "Usage: jira [global options] <command> [command options]"

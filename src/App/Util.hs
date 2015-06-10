@@ -58,7 +58,7 @@ openInBrowser url = getConfig >>= liftIO . openInBrowser' url
 openInBrowser' :: String -> Config -> IO ()
 openInBrowser' url config =
   let command = view configBrowserCommand config
-  in  void . createProcess $ proc command [url]
+  in  void . createProcess . shell $ command ++ " '" ++ url ++ "'"
 
 ask q = putStr q >> hFlush stdout
 getLine' = trim <$> getLine

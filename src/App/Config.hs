@@ -21,7 +21,19 @@ import           System.FilePath
 import           System.Posix.Directory
 
 configFileName :: FilePath
-configFileName = ".jira-workflow"
+configFileName = ".agile"
+
+defaultConfig :: Config
+defaultConfig = Config { _configBaseUrl = "http://jira.example.com"
+                       , _configUsername = "myusername"
+                       , _configProject = "MAP"
+                       , _configDevelopBranch = "develop"
+                       , _configBrowserCommand = "open"
+                       , _configOAuthConsumerKey = "agile-cli"
+                       , _configOAuthSigningKeyPath = "/path/to/key.pem"
+                       , _configOAuthAccessToken = ""
+                       , _configOAuthAccessSecret = ""
+                       }
 
 getJiraConfig :: Config -> IO JiraConfig
 getJiraConfig c = do
