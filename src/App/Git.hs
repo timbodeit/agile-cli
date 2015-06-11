@@ -73,7 +73,8 @@ originUrl = do
 getBranches :: GitM [RefName]
 getBranches = do
   output <- cs <$> git "branch" ["--list"]
-  return . map (RefName . trim) $ lines output
+  return . map (RefName . parse) $ lines output
+  where parse = trim . drop 2
 
 getCurrentBranch :: GitM (Maybe RefName)
 getCurrentBranch = do
