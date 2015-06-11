@@ -16,6 +16,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Data.Aeson
+import           Data.Char
 import           Data.Either.Combinators
 import           Data.Git
 import           Data.List
@@ -59,8 +60,9 @@ configTest = do
     handleError e = putStrLn $ "Error while checking config:\n" ++ show e
 
 handleCreateIssue :: [String] -> IO ()
-handleCreateIssue (issueTypeName : summary) = run $
-  doCreateIssue issueTypeName (unwords summary)
+handleCreateIssue (issueTypeName : summary) = run $ do
+  issueKey <- doCreateIssue issueTypeName (unwords summary)
+  liftIO $ handleOpenIssue [issueKey]
 
 handleShowIssue :: [String] -> IO ()
 handleShowIssue args = run . withIssueIdentifier args $ \issueId -> do
@@ -115,7 +117,7 @@ handleCheckout (issueKey : _) = run $ doCheckoutBranchForIssueKey issueKey
 handleCreateAndStart :: [String] -> IO ()
 handleCreateAndStart (issueTypeName : summary : _) = run $ do
   issueKey <- doCreateIssue issueTypeName summary
-  liftIO $ handleStartIssue [issueKey]
+  liftIO $ handleStartIssue [issueKey] >> handleOpenIssue [issueKey]
 
 handleCreatePullRequest :: [String] -> IO ()
 handleCreatePullRequest args = run . withIssueIdentifier args $ \(IssueKey issueKey) ->
@@ -137,8 +139,8 @@ doCheckoutBranchForIssueKey issueKey = do
 doCreateBranchForIssueKey :: String -> AppM RefName
 doCreateBranchForIssueKey issueKey = do
   issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
-  let issueTypeName = view (iType.itName) issue
-  branchDescription <- liftIO $ ask "Short description for branch? > "
+  let issueTypeName = issue^.iType.itName
+  branchDescription <- liftIO $ toBranchName <$> ask "Short description for branch?"
   baseBranchName <- view configDevelopBranch <$> getConfig
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix
@@ -147,6 +149,7 @@ doCreateBranchForIssueKey issueKey = do
   where
     branchType "Bug" = "bugfix"
     branchType _     = "feature"
+    toBranchName = map (\c -> if isSpace c then '-' else c)
 
 doCreateIssue :: String -> String -> AppM String
 doCreateIssue issueTypeName summary = do
@@ -154,7 +157,6 @@ doCreateIssue issueTypeName summary = do
   let project   = ProjectKey $ config^.configJiraConfig.jiraProject
       issueType = parseIssueType issueTypeName
   issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
-  liftIO $ handleOpenIssue [issueKey]
   return issueKey
 
 doOpenPullRequest :: String -> AppM ()
