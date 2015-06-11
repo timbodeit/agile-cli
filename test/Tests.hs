@@ -62,7 +62,7 @@ trimPrefixProp =
 trimPostfixProp =
   forAll (listOf (oneof [whitespace, space])) $ \postfix ->
   forAll (listOf1 notSpace) $ \w ->
-  trim (postfix ++ w) == w
+  trim (w ++ postfix) == w
 
 trimPrefixPostfixProp =
   forAll (listOf (oneof [whitespace, space])) $ \prefix ->
