@@ -20,6 +20,7 @@ library
                      , App.Config
                      , App.Git
                      , App.InitialSetup
+                     , App.Stash
                      , App.Types
                      , App.Util
   build-depends:       base >=4.7 && <4.9

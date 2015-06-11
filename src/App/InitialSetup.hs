@@ -13,6 +13,7 @@ import           Data.Either.Combinators
 import           Data.List
 import           Data.Maybe
 import           Data.String.Conversions
+import qualified Data.Text               as T
 import qualified Jira.API                as J
 import           Network.HTTP.Client
 import           System.Directory
@@ -62,6 +63,7 @@ doSetupConfigInteractively = do
   stashBaseUrl      <- ask "Stash Base URL?"
   stashProject      <- ask "Stash project key?"
   stashRepo         <- ask "Stash repo name?"
+  stashReviewers    <- ask "Stash reviewers (comma-separated)?" >$< parseCommaList
 
   developBranch     <- ask "Git develop branch name?"
   openCommand       <- ask "Command to open URLs? (e.g. open on OS X)"
@@ -77,11 +79,14 @@ doSetupConfigInteractively = do
   let stashConfig = StashConfig stashBaseUrl
                                 stashProject
                                 stashRepo
+                                stashReviewers
 
   return $ Config jiraConfig
                   stashConfig
                   developBranch
                   openCommand
+  where
+    parseCommaList = map (trim . cs) . T.splitOn "," . cs
 
 doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
 doSetupFromExistingConfig (configPath, config) =

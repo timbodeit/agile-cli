@@ -5,6 +5,7 @@ module App.CLI (dispatch) where
 import           App.Config
 import           App.Git
 import           App.InitialSetup
+import           App.Stash
 import           App.Types
 import           App.Util
 
@@ -47,6 +48,8 @@ dispatch ("reopen" : args)  = handleReopenIssue args
 
 dispatch ("newnow" : args)  = handleCreateAndStart args
 dispatch ("co" : args)      = handleCheckout args
+dispatch ("pr" : args)      = handleCreatePullRequest args
+dispatch ("finish" : args)  = handleFinishIssue args
 
 configTest :: IO ()
 configTest = do
@@ -56,8 +59,8 @@ configTest = do
     handleError e = putStrLn $ "Error while checking config:\n" ++ show e
 
 handleCreateIssue :: [String] -> IO ()
-handleCreateIssue (issueTypeName : summary : _) = run $
-  doCreateIssue issueTypeName summary
+handleCreateIssue (issueTypeName : summary) = run $
+  doCreateIssue issueTypeName (unwords summary)
 
 handleShowIssue :: [String] -> IO ()
 handleShowIssue args = run . withIssueIdentifier args $ \issueId -> do
@@ -114,6 +117,15 @@ handleCreateAndStart (issueTypeName : summary : _) = run $ do
   issueKey <- doCreateIssue issueTypeName summary
   liftIO $ handleStartIssue [issueKey]
 
+handleCreatePullRequest :: [String] -> IO ()
+handleCreatePullRequest args = run . withIssueIdentifier args $ \(IssueKey issueKey) ->
+  doOpenPullRequest issueKey
+
+handleFinishIssue :: [String] -> IO ()
+handleFinishIssue args = run . withIssueIdentifier args $ \(IssueKey issueKey) -> do
+  liftJira $ resolveIssue (IssueKey issueKey)
+  doOpenPullRequest issueKey
+
 --
 
 doCheckoutBranchForIssueKey :: String -> AppM RefName
@@ -144,6 +156,12 @@ doCreateIssue issueTypeName summary = do
   issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
   liftIO $ handleOpenIssue [issueKey]
   return issueKey
+
+doOpenPullRequest :: String -> AppM ()
+doOpenPullRequest issueKey = do
+  source <- branchForIssueKey issueKey
+  target <- view configDevelopBranch <$> getConfig
+  openPullRequest source (RefName target)
 
 --
 

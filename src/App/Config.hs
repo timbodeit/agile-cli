@@ -39,6 +39,7 @@ defaultStashConfig = StashConfig
   { _stashBaseUrl    = "http://stash.example.com"
   , _stashProject    = "MAP"
   , _stashRepository = "myrepo"
+  , _stashReviewers  = []
   }
 
 defaultConfig :: Config

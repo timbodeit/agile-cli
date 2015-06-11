@@ -34,6 +34,7 @@ data StashConfig = StashConfig
   { _stashBaseUrl    :: String
   , _stashProject    :: String
   , _stashRepository :: String
+  , _stashReviewers  :: [String]
   } deriving (Show, Eq)
 
 makeLenses ''StashConfig
