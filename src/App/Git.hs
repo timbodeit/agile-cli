@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -43,10 +42,8 @@ runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
 
 newBranch :: String -> String -> GitM ()
-newBranch newBranch baseBranch = do
-  baseRef <- resolveBranch baseBranch
-  withGit $ \git ->
-    liftIO $ branchWrite git (RefName newBranch) baseRef
+newBranch newbranchName baseBranchName = void $
+  git "branch" [cs newbranchName, cs baseBranchName]
 
 checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
