@@ -13,18 +13,40 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Either
 import           Data.Aeson.TH
 import           Data.Typeable
-import           Jira.API                   hiding (getConfig)
+import           Jira.API                   (JiraException (..))
 
-data Config = Config { _configBaseUrl             :: String
-                     , _configUsername            :: String
-                     , _configProject             :: String
-                     , _configDevelopBranch       :: String
-                     , _configBrowserCommand      :: String
-                     , _configOAuthConsumerKey    :: String
-                     , _configOAuthSigningKeyPath :: String
-                     , _configOAuthAccessToken    :: String
-                     , _configOAuthAccessSecret   :: String
-                     } deriving (Show, Eq)
+data JiraConfig = JiraConfig
+  { _jiraBaseUrl             :: String
+  , _jiraUsername            :: String
+  , _jiraProject             :: String
+  , _jiraOAuthConsumerKey    :: String
+  , _jiraOAuthSigningKeyPath :: String
+  , _jiraOAuthAccessToken    :: String
+  , _jiraOAuthAccessSecret   :: String
+  } deriving (Show, Eq)
+
+makeLenses ''JiraConfig
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 5
+                            } ''JiraConfig)
+
+data StashConfig = StashConfig
+  { _stashBaseUrl    :: String
+  , _stashProject    :: String
+  , _stashRepository :: String
+  } deriving (Show, Eq)
+
+makeLenses ''StashConfig
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 6
+                            } ''StashConfig)
+
+data Config = Config
+  { _configJiraConfig     :: JiraConfig
+  , _configStashConfig    :: StashConfig
+  , _configDevelopBranch  :: String
+  , _configBrowserCommand :: String
+  } deriving (Show, Eq)
 
 makeLenses ''Config
 

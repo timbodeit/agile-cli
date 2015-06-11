@@ -79,9 +79,9 @@ handleMyOpen :: IO ()
 handleMyOpen = run $ do
   config <- getConfig
   let jql = "status = open and assignee = "
-          ++ config^.configUsername
+          ++ config^.configJiraConfig.jiraUsername
           ++ " and project = "
-          ++ config^.configProject
+          ++ config^.configJiraConfig.jiraProject
   liftIO $ handleSearch [jql]
 
 handleStartIssue :: [String] -> IO ()
@@ -139,7 +139,7 @@ doCreateBranchForIssueKey issueKey = do
 doCreateIssue :: String -> String -> AppM String
 doCreateIssue issueTypeName summary = do
   config <- getConfig
-  let project   = ProjectKey $ view configProject config
+  let project   = ProjectKey $ config^.configJiraConfig.jiraProject
       issueType = parseIssueType issueTypeName
   issueKey <- liftJira . createIssue $ IssueCreationData project issueType summary
   liftIO $ handleOpenIssue [issueKey]
@@ -149,7 +149,7 @@ doCreateIssue issueTypeName summary = do
 
 issueBrowserUrl :: IssueIdentifier -> AppM String
 issueBrowserUrl issue = do
-  baseUrl <- view configBaseUrl <$> getConfig
+  baseUrl <- view (configJiraConfig.jiraBaseUrl) <$> getConfig
   case issue of
     IssueKey k -> return $ baseUrl ++ "/browse/" ++ k
     IssueId  i -> return $ baseUrl ++ "/browse/" ++ show i
@@ -165,7 +165,7 @@ parseIssueType s   = IssueTypeName s
 
 parseIssueIdentifier :: String -> AppM IssueIdentifier
 parseIssueIdentifier s = do
-  project <- view configProject <$> getConfig
+  project <- view (configJiraConfig.jiraProject) <$> getConfig
   let defaultPrefix = project ++ "-"
       result        = mapLeft (const parseException) $
                       parse (issueParser defaultPrefix) "" s

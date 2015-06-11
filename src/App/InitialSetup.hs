@@ -13,7 +13,7 @@ import           Data.Either.Combinators
 import           Data.List
 import           Data.Maybe
 import           Data.String.Conversions
-import           Jira.API
+import qualified Jira.API                as J
 import           Network.HTTP.Client
 import           System.Directory
 import           System.Process
@@ -53,33 +53,44 @@ runWizard = do
 
 doSetupConfigInteractively :: IO Config
 doSetupConfigInteractively = do
-  baseUrl       <- ask "JIRA Base URL?"
-  username      <- ask "JIRA username?"
-  project       <- ask "JIRA project key?"
-  consumerKey   <- ask "JIRA OAuth consumer key?"
-  signingKey    <- ask "JIRA OAuth signing key?"
-  developBranch <- ask "Git develop branch name?"
-  openCommand   <- ask "Command to open URLs? (e.g. open on OS X)"
+  jiraBaseUrl       <- ask "JIRA Base URL?"
+  jiraUsername      <- ask "JIRA username?"
+  jiraProject       <- ask "JIRA project key?"
+  jiraConsumerKey   <- ask "JIRA OAuth consumer key?"
+  jiraSigningKey    <- ask "JIRA OAuth signing key?"
 
-  return $ Config baseUrl
-                  username
-                  project
+  stashBaseUrl      <- ask "Stash Base URL?"
+  stashProject      <- ask "Stash project key?"
+  stashRepo         <- ask "Stash repo name?"
+
+  developBranch     <- ask "Git develop branch name?"
+  openCommand       <- ask "Command to open URLs? (e.g. open on OS X)"
+
+  let jiraConfig = JiraConfig jiraBaseUrl
+                              jiraUsername
+                              jiraProject
+                              jiraConsumerKey
+                              jiraSigningKey
+                              "" -- Access Token (unknown yet)
+                              "" -- Access Token Secret (unknown yet)
+
+  let stashConfig = StashConfig stashBaseUrl
+                                stashProject
+                                stashRepo
+
+  return $ Config jiraConfig
+                  stashConfig
                   developBranch
                   openCommand
-                  consumerKey
-                  signingKey
-                  "" -- Access Token (unknown yet)
-                  "" -- Access Token Secret (unknown yet)
 
 doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
 doSetupFromExistingConfig (configPath, config) =
-  if (config^.configOAuthAccessToken) == "" || (config^.configOAuthAccessSecret == "")
-  then doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
-  else
-    let availableAnswers = if configPath == configFileName
-                           then drop 1 answers
-                           else answers
-    in runUserChoice question availableAnswers
+  if isAuthConfigured config
+  then let availableAnswers = if configPath == configFileName
+                              then drop 1 answers
+                              else answers
+       in runUserChoice question availableAnswers
+  else doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
   where
     question = unlines
       [ "Config file with authentication info found at " ++ configPath
@@ -98,15 +109,15 @@ doSetupFromExistingConfig (configPath, config) =
 doInitAuth :: Config -> IO (Maybe Config)
 doInitAuth config =
   doGetAccessToken >$$< \(token, tokenSecret) ->
-      config & configOAuthAccessToken  .~ cs token
-             & configOAuthAccessSecret .~ cs tokenSecret
+      config & configJiraConfig.jiraOAuthAccessToken  .~ cs token
+             & configJiraConfig.jiraOAuthAccessSecret .~ cs tokenSecret
   where
     doGetAccessToken :: IO (Maybe (BS.ByteString, BS.ByteString))
     doGetAccessToken = do
       manager <- newManager defaultManagerSettings
-      pk <- readPemPrivateKey =<< readFile (config^.configOAuthSigningKeyPath)
-      let oauth = getOAuth (config^.configBaseUrl)
-                           (config^.configOAuthConsumerKey)
+      pk <- J.readPemPrivateKey =<< readFile (config^.configJiraConfig.jiraOAuthSigningKeyPath)
+      let oauth = J.getOAuth (config^.configJiraConfig.jiraBaseUrl)
+                           (config^.configJiraConfig.jiraOAuthConsumerKey)
                            pk
       requestToken <- getTemporaryCredential oauth manager
       let authUrl = authorizeUrl oauth requestToken
@@ -127,6 +138,11 @@ doInitAuth config =
 
     keyEquals :: Eq a => a -> (a, b) -> Bool
     keyEquals r (a, _) = a == r
+
+isAuthConfigured :: Config -> Bool
+isAuthConfigured config =
+     config^.configJiraConfig.jiraOAuthAccessToken  /= ""
+  && config^.configJiraConfig.jiraOAuthAccessSecret /= ""
 
 writeConfigTo :: FilePath -> Config -> IO ()
 writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
