@@ -11,39 +11,55 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Lazy    as LBS
 import           Data.Either.Combinators
 import           Data.List
+import           Data.Maybe
 import           Data.String.Conversions
 import           Jira.API
 import           Network.HTTP.Client
+import           System.Directory
 import           System.Process
+import           Text.Read
 import           Web.Authenticate.OAuth
 
 doInitSetup :: IO ()
 doInitSetup = do
-  config <- do existingConfig <- readConfig'
-               case existingConfig of
-                 Left _       -> doSetupConfigInteractively
-                 Right (_, c) -> return c
-  doInitAuth config >>= maybe handleAuthError writeConfigToLocalDir
+  existingConfig <- readConfig'
+  case existingConfig of
+    Left _  -> doSetupConfigFromScratch
+    Right c -> doSetupFromExistingConfig c
+
+doSetupConfigFromScratch :: IO ()
+doSetupConfigFromScratch =
+  runUserChoice
+    "Please choose your preferred option to initialize your agile config:" $
+    zip [ "Create a config file with default settings to adjust manually"
+        , "Use the command-line wizard"
+        ]
+        [ dumpDefaultSettings
+        , runWizard
+        ]
   where
-    writeConfigToLocalDir = LBS.writeFile configFileName . prettyEncodeConfig
-    handleAuthError = putStrLn "Authentication error"
+    dumpDefaultSettings = do
+      writeConfigToLocalDir defaultConfig
+      putStrLn $ "Config written to " ++ configFileName ++ "."
+      putStrLn $ "Adjust the config file to your needs and call 'agile init'" ++
+                 "again to initialize the JIRA authentication."
+
+runWizard :: IO ()
+runWizard = do
+  config <- doSetupConfigInteractively
+  writeConfigToLocalDir config
+  doInitAuth config >>=
+    maybe handleAuthError writeConfigToLocalDir
 
 doSetupConfigInteractively :: IO Config
 doSetupConfigInteractively = do
-  ask "JIRA Base URL? > "
-  baseUrl <- getLine'
-  ask "JIRA username? > "
-  username <- getLine'
-  ask "JIRA project key? > "
-  project <- getLine'
-  ask "JIRA OAuth consumer key? > "
-  consumerKey <- getLine'
-  ask "JIRA OAuth signing key? > "
-  signingKey <- getLine'
-  ask "Git develop branch name? > "
-  developBranch <- getLine'
-  ask "Command to open URLs? (e.g. open on OS X) > "
-  openCommand <- getLine'
+  baseUrl       <- ask "JIRA Base URL?"
+  username      <- ask "JIRA username?"
+  project       <- ask "JIRA project key?"
+  consumerKey   <- ask "JIRA OAuth consumer key?"
+  signingKey    <- ask "JIRA OAuth signing key?"
+  developBranch <- ask "Git develop branch name?"
+  openCommand   <- ask "Command to open URLs? (e.g. open on OS X)"
 
   return $ Config baseUrl
                   username
@@ -54,6 +70,30 @@ doSetupConfigInteractively = do
                   signingKey
                   "" -- Access Token (unknown yet)
                   "" -- Access Token Secret (unknown yet)
+
+doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
+doSetupFromExistingConfig (configPath, config) =
+  if (config^.configOAuthAccessToken) == "" || (config^.configOAuthAccessSecret == "")
+  then doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
+  else
+    let availableAnswers = if configPath == configFileName
+                           then drop 1 answers
+                           else answers
+    in runUserChoice question availableAnswers
+  where
+    question = unlines
+      [ "Config file with authentication info found at " ++ configPath
+      , "What do you want to do?"
+      ]
+    answers = zip
+      [ "Copy config to local directory"
+      , "Create a new config in the local directory using the wizard"
+      , "Re-authenticate with JIRA"
+      ]
+      [ copyFile configPath configFileName
+      , runWizard
+      , doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
+      ]
 
 doInitAuth :: Config -> IO (Maybe Config)
 doInitAuth config =
@@ -87,3 +127,12 @@ doInitAuth config =
 
     keyEquals :: Eq a => a -> (a, b) -> Bool
     keyEquals r (a, _) = a == r
+
+writeConfigTo :: FilePath -> Config -> IO ()
+writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
+
+writeConfigToLocalDir :: Config -> IO ()
+writeConfigToLocalDir = writeConfigTo configFileName
+
+handleAuthError :: IO ()
+handleAuthError = putStrLn "Authentication error. Please try again."

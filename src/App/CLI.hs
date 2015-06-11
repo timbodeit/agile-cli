@@ -126,8 +126,7 @@ doCreateBranchForIssueKey :: String -> AppM RefName
 doCreateBranchForIssueKey issueKey = do
   issue <- liftJira . getIssue =<< parseIssueIdentifier issueKey
   let issueTypeName = view (iType.itName) issue
-  liftIO $ ask "Short description for branch? > "
-  branchDescription <- liftIO getLine'
+  branchDescription <- liftIO $ ask "Short description for branch? > "
   baseBranchName <- view configDevelopBranch <$> getConfig
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix

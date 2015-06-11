@@ -11,6 +11,7 @@ import           Control.Monad.Trans.Either
 import           Data.Char
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
+import           Text.Read
 
 hoistEitherIO :: IO (Either e a) -> EitherT e IO a
 hoistEitherIO = hoistEither <=< liftIO
@@ -60,5 +61,26 @@ openInBrowser' url config =
   let command = view configBrowserCommand config
   in  void . createProcess . shell $ command ++ " '" ++ url ++ "'"
 
-ask q = putStr q >> hFlush stdout
+
+ask :: String -> IO String
+ask question = putStrLn question >> putStr' "> " >> getLine'
+
+runUserChoice :: String -> [(String, IO a)] -> IO a
+runUserChoice question answers = do
+  let question' = unlines $ question : renderAnswers
+  answer <- readMaybe <$> ask question'
+  case answer of
+    Nothing -> tryAgain
+    Just i  -> if i > 0 && i <= length answers
+               then snd (answers !! (i - 1))
+               else tryAgain
+  where
+    tryAgain = putStrLn "Invalid answer." >> runUserChoice question answers
+    renderAnswers = zipWith renderAnswer [1..] $ map fst answers
+    renderAnswer i answer = "[" ++ show i ++ "] " ++ answer
+
+putStr' :: String -> IO ()
+putStr' s = putStr s >> hFlush stdout
+
+getLine' :: IO String
 getLine' = trim <$> getLine
