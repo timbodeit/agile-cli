@@ -12,6 +12,7 @@ import           Data.Char
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
 import           Text.Read
+import           Text.RegexPR
 
 hoistEitherIO :: IO (Either e a) -> EitherT e IO a
 hoistEitherIO = hoistEither <=< liftIO
@@ -84,3 +85,7 @@ putStr' s = putStr s >> hFlush stdout
 
 getLine' :: IO String
 getLine' = trim <$> getLine
+
+-- Match regex with string and return the first group match
+(=~~) :: String -> String -> Maybe String
+s =~~ regex = matchRegexPR regex s & view (_Just._2.to (lookup 1))

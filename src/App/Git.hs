@@ -18,7 +18,6 @@ import qualified Data.Set                   as Set
 import           Data.String.Conversions
 import qualified Data.Text                  as T
 import           Shelly                     hiding (find)
-import           Text.RegexPR
 
 type GitCommand = T.Text
 type GitOption  = T.Text
@@ -99,7 +98,3 @@ withGit :: (Git -> GitM a) -> GitM a
 withGit f = do
   m <- liftIO . withCurrentRepo $ \git -> runGit (f git)
   either throwError return m
-
--- Match regex with string and return the first group match
-(=~~) :: String -> String -> Maybe String
-s =~~ regex = matchRegexPR regex s & view (_Just._2.to (lookup 1))
