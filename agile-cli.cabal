@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     App.CLI
+                     , App.CLI.Parsers
                      , App.Config
                      , App.Git
                      , App.InitialSetup
@@ -68,6 +69,8 @@ test-suite tests
   main-is:           Tests.hs
   build-depends:     base >=4.7 && <4.9
                    , agile-cli
+                   , jira-api
+                   , parsec
                    , HUnit
                    , QuickCheck
                    , test-framework

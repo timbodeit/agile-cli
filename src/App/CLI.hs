@@ -3,6 +3,7 @@
 module App.CLI (dispatch) where
 
 import           App.Config
+import           App.CLI.Parsers
 import           App.Git
 import           App.InitialSetup
 import           App.Stash
@@ -180,25 +181,6 @@ parseIssueType "f" = IssueTypeName "New Feature"
 parseIssueType "i" = IssueTypeName "Improvement"
 parseIssueType "t" = IssueTypeName "Task"
 parseIssueType s   = IssueTypeName s
-
-parseIssueKey :: String -> AppM IssueKey
-parseIssueKey s = do
-  project <- view (configJiraConfig.jiraProject) <$> getConfig
-  let defaultPrefix = project ++ "-"
-      result        = mapLeft (const parseException) $
-                      parse (issueParser defaultPrefix) "" s
-  liftEither result
-  where
-    issueParser prefix = wholeIssueParser <|>
-                         IssueKey prefix <$> numberParser
-    numberParser = IssueNumber . read <$> many1 digit <* eof
-    wholeIssueParser = do
-      project <- manyTill letter (char '-')
-      number  <- numberParser
-      eof
-      return $ IssueKey project number
-    parseException = UserInputException $
-      "Not a valid issue identifier: " ++ s
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
