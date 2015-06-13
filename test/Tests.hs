@@ -1,12 +1,16 @@
 import           Control.Monad
 import           Data.Char
+import           Data.Either
+import           Jira.API
 import           Test.Framework
 import           Test.Framework.Providers.HUnit
 import           Test.Framework.Providers.QuickCheck2
 import           Test.HUnit                           hiding (Test)
 import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
+import qualified Text.Parsec                          as P
 
+import           App.CLI.Parsers
 import           App.Config
 import           App.Types
 import           App.Util
@@ -16,7 +20,15 @@ main = defaultMain tests
 
 tests :: [Test]
 tests =
-  [ testGroup "Utils"
+  [ testGroup "Parsers"
+    [ testProperty "parseIssueNumber" issueNumberParserPostiveIntProp
+    , testProperty "parseIssueNumber" issueNumberParserNegativeIntProp
+    , testProperty "parseIssueKey" issueKeyParserProp
+    , testProperty "parseIssueKey" issueKeyParserNegativeProp
+    , testProperty "parseIssueKeyWithDefaultProject" issueKeyParserWithDefaultProjectWithPrefixProp
+    , testProperty "parseIssueKeyWithDefaultProject" issueKeyParserWithDefaultProjectWithoutPrefixProp
+    ]
+  , testGroup "Utils"
     [ testCase "toMaybe" testToMaybe
     , testCase "liftMaybe" testLiftMaybe
     , testProperty "trim (prefix)" trimPrefixProp
@@ -70,5 +82,38 @@ trimPrefixPostfixProp =
   forAll (listOf1 notSpace) $ \w ->
   trim (prefix ++ w ++ postfix) == w
 
+issueNumberParserPostiveIntProp (Positive n) =
+  P.parse issueNumberParser "" (show n) == Right (IssueNumber n)
+
+issueNumberParserNegativeIntProp = forAll negativeInt $ \n ->
+  isLeft $ P.parse issueNumberParser "" (show n)
+
+issueNumberParserNonNumberProp = forAll (listOf notDigit) $ \s ->
+  isLeft $ P.parse issueNumberParser "" s
+
+issueKeyParserProp (Positive n) = forAll (listOf upperAlpha) $ \project ->
+  P.parse issueKeyParser "" (project ++ "-" ++ show n) ==
+    Right (IssueKey project (IssueNumber n))
+
+issueKeyParserNegativeProp =
+  forAll (arbitrary `suchThat` any (not . isAlpha)) $ \project ->
+  forAll (arbitrary `suchThat` (not . all isDigit))   $ \n ->
+  isLeft $ P.parse issueKeyParser "" (project ++ "-" ++ n)
+
+issueKeyParserWithDefaultProjectWithPrefixProp s (Positive n) =
+  forAll (listOf upperAlpha) $ \project ->
+  P.parse (issueKeyParserWithDefaultProject s) "" (project ++ "-" ++ show n) ==
+    Right (IssueKey project (IssueNumber n))
+
+issueKeyParserWithDefaultProjectWithoutPrefixProp s (Positive n) =
+  P.parse (issueKeyParserWithDefaultProject s) "" (show n) ==
+    Right (IssueKey s (IssueNumber n))
+
 notSpace :: Gen Char
 notSpace = nonSpace `suchThat` (not . isSpace)
+
+notDigit :: Gen Char
+notDigit = arbitrary `suchThat` (not . isDigit)
+
+negativeInt :: Gen Int
+negativeInt = arbitrary `suchThat` (< 0)
