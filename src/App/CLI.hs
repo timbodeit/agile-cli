@@ -2,8 +2,8 @@
 
 module App.CLI (dispatch) where
 
-import           App.Config
 import           App.CLI.Parsers
+import           App.Config
 import           App.Git
 import           App.InitialSetup
 import           App.Stash
@@ -77,9 +77,9 @@ handleOpenIssue args = run . withIssueKey args $
   openInBrowser <=< issueBrowserUrl
 
 handleSearch :: [String] -> IO ()
-handleSearch (jql : _) = run $ do
-  issues <- liftJira $ searchIssues' jql
-  liftIO $ putStrLn $ unlines $ map showIssue $ sort issues
+handleSearch jql = run $ do
+  issues <- liftJira . searchIssues' $ unwords jql
+  liftIO $ putStrLn . unlines . map showIssue $ sort issues
   where
     showIssue i = i^.iKey ++ ": " ++ i^.iSummary
 
@@ -120,8 +120,8 @@ handleCheckout (issueKey : _) = run $
   doCheckoutBranchForIssueKey =<< parseIssueKey issueKey
 
 handleCreateAndStart :: [String] -> IO ()
-handleCreateAndStart (issueTypeName : summary : _) = run $ do
-  issueKey <- doCreateIssue issueTypeName summary
+handleCreateAndStart (issueTypeName : summary) = run $ do
+  issueKey <- doCreateIssue issueTypeName (unwords summary)
   liftIO $ handleStartIssue [issueKey] >> handleOpenIssue [issueKey]
 
 handleCreatePullRequest :: [String] -> IO ()
