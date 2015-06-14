@@ -46,6 +46,7 @@ data Config = Config
   { _configJiraConfig     :: JiraConfig
   , _configStashConfig    :: StashConfig
   , _configDevelopBranch  :: String
+  , _configRemoteName     :: String
   , _configBrowserCommand :: String
   } deriving (Show, Eq)
 

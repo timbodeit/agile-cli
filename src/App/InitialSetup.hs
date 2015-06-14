@@ -66,6 +66,7 @@ doSetupConfigInteractively = do
   stashReviewers    <- ask "Stash reviewers (comma-separated)?" >$< parseCommaList
 
   developBranch     <- ask "Git develop branch name?"
+  remoteName        <- fillDefault "origin" <$> ask "Name of the remote? [origin]"
   openCommand       <- ask "Command to open URLs? (e.g. open on OS X)"
 
   let jiraConfig = JiraConfig jiraBaseUrl
@@ -84,9 +85,12 @@ doSetupConfigInteractively = do
   return $ Config jiraConfig
                   stashConfig
                   developBranch
+                  remoteName
                   openCommand
   where
     parseCommaList = map (trim . cs) . T.splitOn "," . cs
+    fillDefault replacement input | input == "" = replacement
+                                  | otherwise   = input
 
 doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
 doSetupFromExistingConfig (configPath, config) =

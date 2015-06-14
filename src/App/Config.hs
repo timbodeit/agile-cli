@@ -47,6 +47,7 @@ defaultConfig = Config
   { _configJiraConfig     = defaultJiraConfig
   , _configStashConfig    = defaultStashConfig
   , _configDevelopBranch  = "develop"
+  , _configRemoteName     = "origin"
   , _configBrowserCommand = "open"
   }
 
