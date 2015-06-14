@@ -98,7 +98,7 @@ newCommandParser = NewCommand
     strOption ( short 't'
              <> long "type"
              <> metavar "ISSUETYPE"
-             <> help "Issue Type"
+             <> help "Issue Type - use the issuetypes command for available options"
              ))
   <*> switch ( short 's'
             <> long "start"
