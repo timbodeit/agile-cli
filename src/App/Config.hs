@@ -14,6 +14,7 @@ import           Data.Aeson
 import qualified Data.Aeson.Encode.Pretty   as P
 import qualified Data.ByteString.Lazy       as LBS
 import           Data.Either.Combinators
+import qualified Data.Map                   as Map
 import           Data.String.Conversions
 import qualified Jira.API                   as J
 import           System.Directory
@@ -28,6 +29,8 @@ defaultJiraConfig = JiraConfig
   { _jiraBaseUrl             = "http://jira.example.com"
   , _jiraUsername            = "myusername"
   , _jiraProject             = "MAP"
+  , _jiraDefaultIssueType    = "Bug"
+  , _jiraIssueTypeAliases    = defaultIssueTypeMap
   , _jiraOAuthConsumerKey    = "agile-cli"
   , _jiraOAuthSigningKeyPath = "/path/to/key.pem"
   , _jiraOAuthAccessToken    = ""
@@ -44,12 +47,21 @@ defaultStashConfig = StashConfig
 
 defaultConfig :: Config
 defaultConfig = Config
-  { _configJiraConfig     = defaultJiraConfig
-  , _configStashConfig    = defaultStashConfig
-  , _configDevelopBranch  = "develop"
-  , _configRemoteName     = "origin"
-  , _configBrowserCommand = "open"
+  { _configJiraConfig       = defaultJiraConfig
+  , _configStashConfig      = defaultStashConfig
+  , _configDevelopBranch    = "develop"
+  , _configRemoteName       = "origin"
+  , _configBrowserCommand   = "open"
   }
+
+defaultIssueTypeMap :: Map.Map String String
+defaultIssueTypeMap = Map.fromList
+  [ "b" ~> "Bug"
+  , "f" ~> "New Feature"
+  , "t" ~> "Task"
+  , "i" ~> "Improvement"
+  ]
+  where (~>) = (,)
 
 getJiraConfig :: Config -> IO J.JiraConfig
 getJiraConfig c = do
