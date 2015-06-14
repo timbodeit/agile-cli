@@ -15,6 +15,7 @@ data FinishType = FinishWithPullRequest
 
 data CLICommand = InitCommand
                 | ConfigTestCommand
+                | ShowIssueTypesCommand
                 | ShowCommand (Maybe String)
                 | OpenCommand (Maybe String)
                 | SearchCommand String
@@ -55,6 +56,8 @@ optionParser = CLIOptions
     commands =
         command "init" (toParserInfo "Initialize config file" initCommandParser)
      <> command "test" (toParserInfo "Test config" configTestCommandParser)
+     <> command "issuetypes" (toParserInfo "Show available issue types"
+        (pure ShowIssueTypesCommand))
      <> command "show" (toParserInfo "Print information about an issue to stdout" $
         ShowCommand <$> issueArgParser)
      <> command "open" (toParserInfo "Open link to an issue in browser" $

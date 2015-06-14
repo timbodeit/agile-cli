@@ -47,6 +47,8 @@ runCLI options = case options^.cliCommand of
     doInitSetup >> configTest
   ConfigTestCommand ->
     configTest
+  ShowIssueTypesCommand ->
+    showIssueTypes
   ShowCommand issueString ->
     run $ withIssue issueString showIssue
   OpenCommand issueString ->
@@ -108,6 +110,14 @@ configTest = do
   where
     handleError e = putStrLn $ "Error while checking config:\n" ++ show e
 
+showIssueTypes :: IO ()
+showIssueTypes = run $ do
+  liftIO $ putStrLn "Available issue types:"
+  mapM_ printIssueType =<< availableIssueTypes
+  where
+    printIssueType t = liftIO . putStrLn $
+      (t^.itName) ++ ": " ++ (t^.itDescription)
+
 checkoutBranchForIssueKey :: IssueKey -> AppM RefName
 checkoutBranchForIssueKey issueKey = do
   branch <- branchForIssueKey issueKey
@@ -145,6 +155,15 @@ issueBrowserUrl :: IssueKey -> AppM String
 issueBrowserUrl issue = do
   baseUrl <- view (configJiraConfig.jiraBaseUrl) <$> getConfig
   return $ baseUrl ++ "/browse/" ++ urlId issue
+
+availableIssueTypes :: AppM [IssueType]
+availableIssueTypes = do
+  (CreateIssueMetadata projectPairs) <- liftJira getCreateIssueMetadata
+  projectKey <- view (configJiraConfig.jiraProject) <$> getConfig
+  projectPair <- liftMaybe
+    (ConfigException $ "Project not found: " ++ projectKey) $
+    find (\p -> p^._1.pKey == projectKey) projectPairs
+  return $ snd projectPair
 
 -- CLI parsing
 
