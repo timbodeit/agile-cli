@@ -75,10 +75,12 @@ runCLI options = case options^.cliCommand of
     run $ withIssueKey issueString openPullRequest'
   FinishCommand finishType issueString ->
     run $ withIssueKey issueString $ \issueKey -> do
-      liftJira $ resolveIssue issueKey
       case finishType of
-        FinishWithPullRequest -> openPullRequest' issueKey
+        FinishWithPullRequest -> do
+          liftJira $ resolveIssue issueKey
+          openPullRequest' issueKey
         FinishWithMerge -> do
+          liftJira $ closeIssue issueKey
           source <- branchForIssueKey issueKey
           target <- RefName . view configDevelopBranch <$> getConfig
           runGit' $ mergeBranch source target
