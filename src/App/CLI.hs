@@ -87,7 +87,7 @@ runCLI options = case options^.cliCommand of
   CommitCommand options -> run $ do
     issueKey <- currentIssueKey
     liftIO $ rawSystem "git" $
-      ["commit", "-m", show issueKey, "-e"] ++ map cs options
+      ["commit", "-m", show issueKey, "-e"] ++ options
 
 showIssue :: Issue -> AppM ()
 showIssue = liftIO . print
