@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module App.CLI (dispatch) where
+module App.CLI (execCLI) where
 
+import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
 import           App.Git
@@ -25,6 +26,7 @@ import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Typeable
 import           Jira.API                   hiding (getConfig)
+import           Options.Applicative
 import           System.Directory
 import           System.Environment
 import           System.Process
@@ -33,27 +35,69 @@ import           Text.Parsec.Char
 import           Text.Read
 import           Text.RegexPR
 
-dispatch :: [String] -> IO ()
-dispatch [] = putStrLn "Usage: jira [global options] <command> [command options]"
-dispatch ("init" : _)       = doInitSetup >> configTest
-dispatch ("test" : _)       = configTest
+execCLI :: IO ()
+execCLI =
+  let parser = info (helper <*> optionParser) fullDesc
+  in execParser parser >>= runCLI
 
-dispatch ("show" : args)    = handleShowIssue args
-dispatch ("open" : args)    = handleOpenIssue args
-dispatch ("myopen" : args)  = handleMyOpen
-dispatch ("search" : args)  = handleSearch args
+runCLI :: CLIOptions -> IO ()
+runCLI options = case options^.cliCommand of
+  InitCommand ->
+    doInitSetup >> configTest
+  ConfigTestCommand ->
+    configTest
+  ShowCommand issueString ->
+    run $ withIssue issueString showIssue
+  OpenCommand issueString ->
+    run $ withIssueKey issueString $ openInBrowser <=< issueBrowserUrl
+  SearchCommand jql ->
+    run $ searchIssues jql
+  NewCommand issueTypeString start summary ->
+    let issueType = maybe (IssueTypeName "Bug") parseIssueType issueTypeString
+    in run $ do
+      issueKeyString <- createIssue' issueType summary
+      issueKey <- parseIssueKey issueKeyString
+      openInBrowser =<< issueBrowserUrl issueKey
+      when start $ startIssue issueKey
+  StartCommand issueString ->
+    run $ withIssueKey issueString startIssue
+  StopCommand issueString ->
+    run $ withIssueKey issueString (liftJira . stopProgress)
+  ResolveCommand issueString ->
+    run $ withIssueKey issueString (liftJira . resolveIssue)
+  CloseCommand issueString ->
+    run $ withIssueKey issueString (liftJira . closeIssue)
+  ReopenCommand issueString ->
+    run $ withIssueKey issueString (liftJira . reopenIssue)
+  CheckoutCommand issueString ->
+    run $ withIssueKey (Just issueString) checkoutBranchForIssueKey
+  CreatePullRequestCommand issueString ->
+    run $ withIssueKey issueString openPullRequest'
+  FinishCommand finishType issueString ->
+    run $ withIssueKey issueString $ \issueKey -> do
+      liftJira $ resolveIssue issueKey
+      case finishType of
+        FinishWithPullRequest -> openPullRequest' issueKey
+        FinishWithMerge -> do
+          source <- branchForIssueKey issueKey
+          target <- RefName . view configDevelopBranch <$> getConfig
+          runGit' $ mergeBranch source target
 
-dispatch ("new" : args)     = handleCreateIssue args
-dispatch ("start" : args)   = handleStartIssue args
-dispatch ("stop" : args)    = handleStopProgress args
-dispatch ("resolve" : args) = handleResolveIssue args
-dispatch ("close" : args)   = handleCloseIssue args
-dispatch ("reopen" : args)  = handleReopenIssue args
+showIssue :: Issue -> AppM ()
+showIssue = liftIO . print
 
-dispatch ("newnow" : args)  = handleCreateAndStart args
-dispatch ("co" : args)      = handleCheckout args
-dispatch ("pr" : args)      = handleCreatePullRequest args
-dispatch ("finish" : args)  = handleFinishIssue args
+searchIssues :: String -> AppM ()
+searchIssues jql = do
+  issues <- liftJira $ searchIssues' jql
+  liftIO $ mapM_ (putStrLn . showIssue) issues
+  where
+    showIssue i = i^.iKey ++ ": " ++ i^.iSummary
+
+startIssue :: IssueKey -> AppM ()
+startIssue issueKey = do
+  branch <- createBranchForIssueKey issueKey
+  runGit' $ checkoutBranch branch
+  liftJira $ startProgress issueKey
 
 configTest :: IO ()
 configTest = do
@@ -62,84 +106,14 @@ configTest = do
   where
     handleError e = putStrLn $ "Error while checking config:\n" ++ show e
 
-handleCreateIssue :: [String] -> IO ()
-handleCreateIssue (issueTypeName : summary) = run $ do
-  issueKey <- doCreateIssue issueTypeName (unwords summary)
-  liftIO $ handleOpenIssue [issueKey]
-
-handleShowIssue :: [String] -> IO ()
-handleShowIssue args = run . withIssueKey args $ \issueKey -> do
-  issue <- liftJira $ getIssue issueKey
-  liftIO $ print issue
-
-handleOpenIssue :: [String] -> IO ()
-handleOpenIssue args = run . withIssueKey args $
-  openInBrowser <=< issueBrowserUrl
-
-handleSearch :: [String] -> IO ()
-handleSearch jql = run $ do
-  issues <- liftJira . searchIssues' $ unwords jql
-  liftIO $ putStrLn . unlines . map showIssue $ sort issues
-  where
-    showIssue i = i^.iKey ++ ": " ++ i^.iSummary
-
-handleMyOpen :: IO ()
-handleMyOpen = run $ do
-  config <- getConfig
-  let jql = "status = open and assignee = "
-          ++ config^.configJiraConfig.jiraUsername
-          ++ " and project = "
-          ++ config^.configJiraConfig.jiraProject
-  liftIO $ handleSearch [jql]
-
-handleStartIssue :: [String] -> IO ()
-handleStartIssue (issueKeyRep : _) = run $ do
-  issueKey <- parseIssueKey issueKeyRep
-  branch <- doCreateBranchForIssueKey issueKey
-  runGit' $ checkoutBranch branch
-  liftJira $ startProgress issueKey
-
-handleStopProgress :: [String] -> IO ()
-handleStopProgress args = run . withIssueKey args $
-  liftJira . stopProgress
-
-handleResolveIssue :: [String] -> IO ()
-handleResolveIssue args = run . withIssueKey args $
-  liftJira . resolveIssue
-
-handleCloseIssue :: [String] -> IO ()
-handleCloseIssue args = run . withIssueKey args $
-  liftJira . closeIssue
-
-handleReopenIssue :: [String] -> IO ()
-handleReopenIssue args = run . withIssueKey args $
-  liftJira . reopenIssue
-
-handleCheckout :: [String] -> IO ()
-handleCheckout (issueKey : _) = run $
-  doCheckoutBranchForIssueKey =<< parseIssueKey issueKey
-
-handleCreateAndStart :: [String] -> IO ()
-handleCreateAndStart (issueTypeName : summary) = run $ do
-  issueKey <- doCreateIssue issueTypeName (unwords summary)
-  liftIO $ handleStartIssue [issueKey] >> handleOpenIssue [issueKey]
-
-handleCreatePullRequest :: [String] -> IO ()
-handleCreatePullRequest args = run . withIssueKey args $ doOpenPullRequest
-
-handleFinishIssue :: [String] -> IO ()
-handleFinishIssue args = run . withIssueKey args $ \issueKey -> do
-  liftJira $ resolveIssue issueKey
-  doOpenPullRequest issueKey
-
-doCheckoutBranchForIssueKey :: IssueKey -> AppM RefName
-doCheckoutBranchForIssueKey issueKey = do
+checkoutBranchForIssueKey :: IssueKey -> AppM RefName
+checkoutBranchForIssueKey issueKey = do
   branch <- branchForIssueKey issueKey
   runGit' $ checkoutBranch branch
   return branch
 
-doCreateBranchForIssueKey :: IssueKey -> AppM RefName
-doCreateBranchForIssueKey issueKey = do
+createBranchForIssueKey :: IssueKey -> AppM RefName
+createBranchForIssueKey issueKey = do
   issue <- liftJira $ getIssue issueKey
   let issueTypeName = issue^.iType.itName
   branchDescription <- liftIO $ toBranchName <$> ask "Short description for branch?"
@@ -153,20 +127,17 @@ doCreateBranchForIssueKey issueKey = do
     branchType _     = "feature"
     toBranchName = map (\c -> if isSpace c then '-' else c)
 
-doCreateIssue :: String -> String -> AppM String
-doCreateIssue issueTypeName summary = do
+createIssue' :: IssueTypeIdentifier -> String -> AppM String
+createIssue' issueType summary = do
   config <- getConfig
-  let project   = ProjectKey $ config^.configJiraConfig.jiraProject
-      issueType = parseIssueType issueTypeName
+  let project = ProjectKey $ config^.configJiraConfig.jiraProject
   liftJira . createIssue $ IssueCreationData project issueType summary
 
-doOpenPullRequest :: IssueKey -> AppM ()
-doOpenPullRequest issueKey = do
+openPullRequest' :: IssueKey -> AppM ()
+openPullRequest' issueKey = do
   source <- branchForIssueKey issueKey
   target <- view configDevelopBranch <$> getConfig
   openPullRequest source (RefName target)
-
---
 
 issueBrowserUrl :: IssueKey -> AppM String
 issueBrowserUrl issue = do
@@ -197,10 +168,6 @@ currentIssueKey = do
     branchException = UserInputException "You are not on a branch"
     parseException  = UserInputException "Can't parse issue from current branch"
 
-withIssueKey :: [String] -> (IssueKey -> AppM a) -> AppM a
-withIssueKey [] =             (=<< currentIssueKey)
-withIssueKey (issueKey : _) = (=<< parseIssueKey issueKey)
-
 branchForIssueKey :: IssueKey -> AppM RefName
 branchForIssueKey issueKey = do
   branches <- runGit' getBranches
@@ -208,6 +175,13 @@ branchForIssueKey issueKey = do
   where
     containsKey (RefName s) = show issueKey `isInfixOf` s
     branchException = UserInputException $ "Branch for issue not found: " ++ show issueKey
+
+withIssueKey :: Maybe String -> (IssueKey -> AppM a) -> AppM a
+withIssueKey Nothing         = (=<< currentIssueKey)
+withIssueKey (Just issueKey) = (=<< parseIssueKey issueKey)
+
+withIssue :: Maybe String -> (Issue -> AppM a) -> AppM a
+withIssue s f = withIssueKey s (f <=< liftJira . getIssue)
 
 -- App Monad
 
