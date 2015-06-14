@@ -48,6 +48,11 @@ checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
   checkoutBranch' branch `catchError` const (stashAndCheckoutBranch branch)
 
+mergeBranch :: RefName -> RefName -> GitM ()
+mergeBranch (RefName source) target = void $ do
+  checkoutBranch' target
+  git "merge" ["--no-ff", cs source]
+
 checkoutBranch' :: RefName -> GitM ()
 checkoutBranch' (RefName branch) = void $
   git "checkout" [cs branch]

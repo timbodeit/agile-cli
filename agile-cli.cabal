@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     App.CLI
+                     , App.CLI.Options
                      , App.CLI.Parsers
                      , App.Config
                      , App.Git
@@ -52,6 +53,7 @@ library
                      , regexpr
                      , parsec
                      , containers
+                     , optparse-applicative
                      --, readline
   default-language:    Haskell2010
 

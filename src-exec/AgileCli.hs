@@ -5,4 +5,4 @@ import           App.CLI
 import           System.Environment
 
 main :: IO ()
-main = dispatch =<< getArgs
+main = execCLI
