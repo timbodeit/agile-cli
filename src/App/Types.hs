@@ -12,6 +12,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Trans.Either
 import           Data.Aeson.TH
+import qualified Data.Map                   as Map
 import           Data.Typeable
 import           Jira.API                   (JiraException (..))
 
@@ -19,6 +20,8 @@ data JiraConfig = JiraConfig
   { _jiraBaseUrl             :: String
   , _jiraUsername            :: String
   , _jiraProject             :: String
+  , _jiraDefaultIssueType    :: String
+  , _jiraIssueTypeAliases    :: Map.Map String String
   , _jiraOAuthConsumerKey    :: String
   , _jiraOAuthSigningKeyPath :: String
   , _jiraOAuthAccessToken    :: String

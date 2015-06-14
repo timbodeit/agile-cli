@@ -11,6 +11,7 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Lazy    as LBS
 import           Data.Either.Combinators
 import           Data.List
+import qualified Data.Map                as Map
 import           Data.Maybe
 import           Data.String.Conversions
 import qualified Data.Text               as T
@@ -57,6 +58,7 @@ doSetupConfigInteractively = do
   jiraBaseUrl       <- ask "JIRA Base URL?"
   jiraUsername      <- ask "JIRA username?"
   jiraProject       <- ask "JIRA project key?"
+  jiraDefaultType   <- ask "JIRA default issue type?"
   jiraConsumerKey   <- ask "JIRA OAuth consumer key?"
   jiraSigningKey    <- ask "JIRA OAuth signing key?"
 
@@ -72,6 +74,8 @@ doSetupConfigInteractively = do
   let jiraConfig = JiraConfig jiraBaseUrl
                               jiraUsername
                               jiraProject
+                              jiraDefaultType
+                              defaultIssueTypeMap
                               jiraConsumerKey
                               jiraSigningKey
                               "" -- Access Token (unknown yet)

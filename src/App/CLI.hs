@@ -22,6 +22,7 @@ import           Data.Char
 import           Data.Either.Combinators
 import           Data.Git
 import           Data.List
+import qualified Data.Map                   as Map
 import           Data.Maybe
 import           Data.String.Conversions
 import           Data.Typeable
@@ -52,13 +53,12 @@ runCLI options = case options^.cliCommand of
     run $ withIssueKey issueString $ openInBrowser <=< issueBrowserUrl
   SearchCommand jql ->
     run $ searchIssues jql
-  NewCommand issueTypeString start summary ->
-    let issueType = maybe (IssueTypeName "Bug") parseIssueType issueTypeString
-    in run $ do
-      issueKeyString <- createIssue' issueType summary
-      issueKey <- parseIssueKey issueKeyString
-      openInBrowser =<< issueBrowserUrl issueKey
-      when start $ startIssue issueKey
+  NewCommand issueTypeString start summary -> run $ do
+    issueType <- parseIssueType issueTypeString
+    issueKeyString <- createIssue' issueType summary
+    issueKey <- parseIssueKey issueKeyString
+    openInBrowser =<< issueBrowserUrl issueKey
+    when start $ startIssue issueKey
   StartCommand issueString ->
     run $ withIssueKey issueString startIssue
   StopCommand issueString ->
@@ -74,7 +74,7 @@ runCLI options = case options^.cliCommand of
   CreatePullRequestCommand issueString ->
     run $ withIssueKey issueString openPullRequest'
   FinishCommand finishType issueString ->
-    run $ withIssueKey issueString $ \issueKey -> do
+    run $ withIssueKey issueString $ \issueKey ->
       case finishType of
         FinishWithPullRequest -> do
           liftJira $ resolveIssue issueKey
@@ -148,12 +148,15 @@ issueBrowserUrl issue = do
 
 -- CLI parsing
 
-parseIssueType :: String -> IssueTypeIdentifier
-parseIssueType "b" = IssueTypeName "Bug"
-parseIssueType "f" = IssueTypeName "New Feature"
-parseIssueType "i" = IssueTypeName "Improvement"
-parseIssueType "t" = IssueTypeName "Task"
-parseIssueType s   = IssueTypeName s
+parseIssueType :: Maybe String -> AppM IssueTypeIdentifier
+parseIssueType = maybe defaultType resolveAlias
+  where
+    defaultType = IssueTypeName .
+      view (configJiraConfig.jiraDefaultIssueType) <$> getConfig
+    resolveAlias alias = do
+      aliasMap <- view (configJiraConfig.jiraIssueTypeAliases) <$> getConfig
+      return . IssueTypeName $
+        Map.findWithDefault alias alias aliasMap
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
