@@ -5,7 +5,7 @@ module App.CLI (execCLI) where
 import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
-import           App.Git
+import qualified App.Git                    as Git
 import           App.InitialSetup
 import           App.Stash
 import           App.Types
@@ -85,7 +85,7 @@ runCLI options = case options^.cliCommand of
           liftJira $ closeIssue issueKey
           source <- branchForIssueKey issueKey
           target <- RefName . view configDevelopBranch <$> getConfig
-          runGit' $ mergeBranch source target
+          runGit' $ Git.mergeBranch source target
   CommitCommand options -> run $ do
     issueKey <- currentIssueKey
     liftIO $ rawSystem "git" $
@@ -104,7 +104,7 @@ searchIssues jql = do
 startIssue :: IssueKey -> AppM ()
 startIssue issueKey = do
   branch <- createBranchForIssueKey issueKey
-  runGit' $ checkoutBranch branch
+  runGit' $ Git.checkoutBranch branch
   liftJira $ startProgress issueKey
 
 configTest :: IO ()
@@ -125,7 +125,7 @@ showIssueTypes = run $ do
 checkoutBranchForIssueKey :: IssueKey -> AppM RefName
 checkoutBranchForIssueKey issueKey = do
   branch <- branchForIssueKey issueKey
-  runGit' $ checkoutBranch branch
+  runGit' $ Git.checkoutBranch branch
   return branch
 
 createBranchForIssueKey :: IssueKey -> AppM RefName
@@ -136,7 +136,7 @@ createBranchForIssueKey issueKey = do
   baseBranchName <- view configDevelopBranch <$> getConfig
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix
-  runGit' $ newBranch branchName baseBranchName
+  runGit' $ Git.newBranch branchName baseBranchName
   return $ RefName branchName
   where
     branchType "Bug" = "bugfix"
@@ -183,7 +183,7 @@ parseIssueType = maybe defaultType resolveAlias
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
-  (RefName branchName) <- runGit' getCurrentBranch `orThrowM` branchException
+  (RefName branchName) <- runGit' Git.getCurrentBranch `orThrowM` branchException
   extractIssueKey branchName `orThrow` parseException
   where
     extractIssueKey :: String -> Maybe IssueKey
@@ -198,7 +198,7 @@ currentIssueKey = do
 
 branchForIssueKey :: IssueKey -> AppM RefName
 branchForIssueKey issueKey = do
-  branches <- runGit' getBranches
+  branches <- runGit' Git.getBranches
   find containsKey branches `orThrow` branchException
   where
     containsKey (RefName s) = show issueKey `isInfixOf` s
@@ -214,7 +214,7 @@ withIssue s f = withIssueKey s (f <=< liftJira . getIssue)
 -- App Monad
 
 run :: AppM a -> IO ()
-run m = runApp' m >>= either print (const $ return ())
+run m = runApp' m >>= either handleAppException (const $ return ())
 
 runApp' :: AppM a -> IO (Either AppException a)
 runApp' m = runEitherT $ do
@@ -228,7 +228,21 @@ liftJira m = do
   result <- liftIO $ runJira jiraConfig m
   either (throwError . JiraApiException) return result
 
-runGit' :: GitM a -> AppM a
-runGit' m = liftEitherIO $ mapLeft convertException <$> runGit m
+runGit' :: Git.GitM a -> AppM a
+runGit' m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
   where
-    convertException (App.Git.GitException s) = App.Types.GitException s
+    convertException (Git.GitException s) = GitException s
+
+handleAppException :: AppException -> IO ()
+handleAppException (ConfigException s) =
+  putStrLn "Problem with config file:" >> putStrLn s
+handleAppException (AuthException s) =
+  putStrLn "Authentication Error:" >> putStrLn s
+handleAppException (GitException s) =
+  putStrLn "Git error:" >> putStrLn s
+handleAppException (UserInputException s) =
+  putStrLn s
+handleAppException (JiraApiException e) = case e of
+  JsonFailure s    -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
+  OtherException e -> putStrLn "Fatal exception in JIRA API:"    >> print e
+  GenericFailure   -> putStrLn "Fatal exception in JIRA API"
