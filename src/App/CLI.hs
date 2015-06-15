@@ -243,6 +243,7 @@ handleAppException (GitException s) =
 handleAppException (UserInputException s) =
   putStrLn s
 handleAppException (JiraApiException e) = case e of
-  JsonFailure s    -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
-  OtherException e -> putStrLn "Fatal exception in JIRA API:"    >> print e
-  GenericFailure   -> putStrLn "Fatal exception in JIRA API"
+  JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
+  OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
+  GenericFailure           -> putStrLn "Fatal exception in JIRA API"
+  BadRequestException info -> putStrLn "Bad request to JIRA API:"        >> print info
