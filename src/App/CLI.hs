@@ -84,6 +84,10 @@ runCLI options = case options^.cliCommand of
           source <- branchForIssueKey issueKey
           target <- RefName . view configDevelopBranch <$> getConfig
           runGit' $ mergeBranch source target
+  CommitCommand options -> run $ do
+    issueKey <- currentIssueKey
+    liftIO $ rawSystem "git" $
+      ["commit", "-m", show issueKey, "-e"] ++ options
 
 showIssue :: Issue -> AppM ()
 showIssue = liftIO . print

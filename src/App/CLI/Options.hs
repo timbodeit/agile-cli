@@ -27,6 +27,7 @@ data CLICommand = InitCommand
                 | CheckoutCommand String
                 | CreatePullRequestCommand (Maybe String)
                 | FinishCommand FinishType (Maybe String)
+                | CommitCommand [String]
                 deriving (Show, Eq)
 
 data CLIOptions = CLIOptions
@@ -76,6 +77,7 @@ optionParser = CLIOptions
      <> command "search" (toParserInfo "Search for issues" searchCommandParser)
      <> command "new" (toParserInfo "Create a new issue" newCommandParser)
      <> command "co" (toParserInfo "Checkout an issue's branch" checkoutCommandParser)
+     <> command "commit" (toParserInfo "Create git commit" commitCommandParser)
 
 initCommandParser :: Parser CLICommand
 initCommandParser = pure InitCommand
@@ -119,6 +121,10 @@ finishCommandParser = FinishCommand
      <> help "Whether to merge branch directly instead of creating a pull request"
       )
   <*> issueArgParser
+
+commitCommandParser :: Parser CLICommand
+commitCommandParser = CommitCommand
+  <$> many (strArgument (help "Additional options to git commit"))
 
 issueArgParser :: Parser (Maybe String)
 issueArgParser = optional $ strArgument
