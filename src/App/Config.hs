@@ -111,13 +111,9 @@ searchConfig = getCurrentDirectory >>= go
               else go parent
 
 parseConfig :: String -> Either AppException Config
-parseConfig = toEither parseException . decode . cs
+parseConfig = mapLeft convertException . eitherDecode . cs
   where
-    toEither :: e -> Maybe r -> Either e r
-    toEither e = maybe (Left e) Right
-
-    parseException :: AppException
-    parseException = ConfigException "Error while parsing config file"
+    convertException msg = ConfigException $ "Parse error: " ++ msg
 
 prettyEncodeConfig :: Config -> LBS.ByteString
 prettyEncodeConfig config =
