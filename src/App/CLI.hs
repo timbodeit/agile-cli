@@ -135,7 +135,7 @@ createBranchForIssueKey issueKey = do
   branchDescription <- liftIO $ toBranchName <$> ask "Short description for branch?"
   remoteName <- view configRemoteName <$> getConfig
   developBranchName <- view configDevelopBranch <$> getConfig
-  let baseBranchName = remoteName ++ "/" ++ baseBranchName
+  let baseBranchName = remoteName ++ "/" ++ developBranchName
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix
   liftGit $ Git.newBranch branchName baseBranchName
