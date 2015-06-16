@@ -85,7 +85,7 @@ runCLI options = case options^.cliCommand of
           liftJira $ closeIssue issueKey
           source <- branchForIssueKey issueKey
           target <- RefName . view configDevelopBranch <$> getConfig
-          runGit' $ Git.mergeBranch source target
+          liftGit $ Git.mergeBranch source target
   CommitCommand options -> run $ do
     issueKey <- currentIssueKey
     liftIO $ rawSystem "git" $
@@ -104,7 +104,7 @@ searchIssues jql = do
 startIssue :: IssueKey -> AppM ()
 startIssue issueKey = do
   branch <- createBranchForIssueKey issueKey
-  runGit' $ Git.checkoutBranch branch
+  liftGit $ Git.checkoutBranch branch
   liftJira $ startProgress issueKey
 
 configTest :: IO ()
@@ -125,7 +125,7 @@ showIssueTypes = run $ do
 checkoutBranchForIssueKey :: IssueKey -> AppM RefName
 checkoutBranchForIssueKey issueKey = do
   branch <- branchForIssueKey issueKey
-  runGit' $ Git.checkoutBranch branch
+  liftGit $ Git.checkoutBranch branch
   return branch
 
 createBranchForIssueKey :: IssueKey -> AppM RefName
@@ -136,7 +136,7 @@ createBranchForIssueKey issueKey = do
   baseBranchName <- view configDevelopBranch <$> getConfig
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix
-  runGit' $ Git.newBranch branchName baseBranchName
+  liftGit $ Git.newBranch branchName baseBranchName
   return $ RefName branchName
   where
     branchType "Bug" = "bugfix"
@@ -183,7 +183,7 @@ parseIssueType = maybe defaultType resolveAlias
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
-  (RefName branchName) <- runGit' Git.getCurrentBranch `orThrowM` branchException
+  (RefName branchName) <- liftGit Git.getCurrentBranch `orThrowM` branchException
   extractIssueKey branchName `orThrow` parseException
   where
     extractIssueKey :: String -> Maybe IssueKey
@@ -198,7 +198,7 @@ currentIssueKey = do
 
 branchForIssueKey :: IssueKey -> AppM RefName
 branchForIssueKey issueKey = do
-  branches <- runGit' Git.getBranches
+  branches <- liftGit Git.getBranches
   find containsKey branches `orThrow` branchException
   where
     containsKey (RefName s) = show issueKey `isInfixOf` s
@@ -228,8 +228,8 @@ liftJira m = do
   result <- liftIO $ runJira jiraConfig m
   either (throwError . JiraApiException) return result
 
-runGit' :: Git.GitM a -> AppM a
-runGit' m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
+liftGit :: Git.GitM a -> AppM a
+liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
   where
     convertException (Git.GitException s) = GitException s
 
