@@ -28,6 +28,8 @@ import           Data.String.Conversions
 import           Data.Typeable
 import           Jira.API                   hiding (getConfig)
 import           Options.Applicative
+import           System.IO
+import           System.IO.Temp
 import           System.Directory
 import           System.Environment
 import           System.Process
@@ -88,8 +90,12 @@ runCLI options = case options^.cliCommand of
           liftGit $ Git.mergeBranch source target
   CommitCommand options -> run $ do
     issueKey <- currentIssueKey
-    liftIO $ rawSystem "git" $
-      ["commit", "-m", show issueKey, "-e"] ++ options
+    liftIO
+      $ withSystemTempFile "agile-cli.gittemplate"
+      $ \tempPath tempHandle -> do
+        hPutStr tempHandle $ show issueKey ++ " "
+        hClose tempHandle
+        rawSystem "git" $ ["commit", "-t", cs tempPath, "-e"] ++ options
 
 showIssue :: Issue -> AppM ()
 showIssue = liftIO . print

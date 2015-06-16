@@ -49,6 +49,7 @@ library
                      , filepath
                      , hit
                      , shelly
+                     , temporary
                      , text
                      , regexpr
                      , parsec
