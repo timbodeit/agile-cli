@@ -37,8 +37,29 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
                                  , MonadIO
                                  )
 
+data BranchStatus = UpToDate | NoUpstream | NewCommits
+data WorkingCopyStatus = Clean | Dirty
+
 runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
+
+branchStatus :: GitM BranchStatus
+branchStatus = do
+  local    <- git "rev-parse" ["HEAD"]
+  upstream <- tryMaybe $ git "rev-parse" ["HEAD@{u}"]
+  return $ case upstream of
+    Nothing                           -> NoUpstream
+    Just upstream | upstream == local -> UpToDate
+                  | otherwise         -> NewCommits
+  where tryMaybe k = (Just <$> k) `catchError` const (return Nothing)
+
+workingCopyStatus :: GitM WorkingCopyStatus
+workingCopyStatus = do
+  (output, err, code) <- git' "diff" ["--quiet","HEAD"]
+  case code of
+    0 -> return Clean
+    1 -> return Dirty
+    otherwise -> throwError $ GitException $ cs err
 
 newBranch :: String -> String -> GitM ()
 newBranch newbranchName baseBranchName = void $
@@ -83,13 +104,17 @@ getCurrentBranch = do
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
 git command options = do
-  result <- shelly' $ do
+  (output, err, code) <- git' command options
+  if code == 0
+    then return output
+    else throwError $ GitException $ cs err
+
+git' :: GitCommand -> [GitOption] -> GitM (T.Text, T.Text, Int)
+git' command options = shelly' $ do
     output <- run "git" (command : options)
+    err    <- lastStderr
     code   <- lastExitCode
-    if code == 0
-    then return $ Right output
-    else Left <$> lastStderr
-  either (throwError . GitException . cs) return result
+    return (output, err, code)
   where
     shelly' = liftIO . shelly . silently . errExit False
 
