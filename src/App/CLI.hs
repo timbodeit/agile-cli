@@ -121,7 +121,7 @@ finishIssueWithPullRequest issueKey = do
     otherwise           -> finishIssueWithPullRequest' issueKey
   where
     confirmFinish message = do
-      liftIO (putStrLn message)
+      liftIO (putStr message)
       confirm' >>= bool (return ()) (finishIssueWithPullRequest' issueKey)
     confirm' = liftIO getChar >>= \case
       'y' -> return True
