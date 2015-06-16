@@ -68,12 +68,6 @@ resolveBranch branch = withGit $ \git -> do
   rev <- liftIO $ resolveRevision git (Revision branch [])
   rev `orThrow` GitException ("Unknown branch: " ++ branch)
 
-originUrl :: GitM String
-originUrl = do
-  output <- git "remote" ["show", "-n", "origin"]
-  cs output =~~ "URL:\\s*(\\S+)"
-    `orThrow` GitException "Unable to parse origin URL"
-
 getBranches :: GitM [RefName]
 getBranches = do
   output <- cs <$> git "branch" ["--list"]
