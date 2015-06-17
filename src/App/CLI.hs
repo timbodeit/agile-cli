@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module App.CLI (execCLI) where
@@ -6,6 +7,7 @@ import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
 import qualified App.Git                    as Git
+import           App.Git (BranchStatus(..), WorkingCopyStatus(..))
 import           App.InitialSetup
 import           App.Stash
 import           App.Types
@@ -18,6 +20,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Data.Aeson
+import           Data.Bool
 import           Data.Char
 import           Data.Either.Combinators
 import           Data.Git
@@ -78,16 +81,9 @@ runCLI options = case options^.cliCommand of
   CreatePullRequestCommand issueString ->
     run $ withIssueKey issueString openPullRequest'
   FinishCommand finishType issueString ->
-    run $ withIssueKey issueString $ \issueKey ->
-      case finishType of
-        FinishWithPullRequest -> do
-          liftJira $ resolveIssue issueKey
-          openPullRequest' issueKey
-        FinishWithMerge -> do
-          liftJira $ closeIssue issueKey
-          source <- branchForIssueKey issueKey
-          target <- RefName . view configDevelopBranch <$> getConfig
-          liftGit $ Git.mergeBranch source target
+    run $ withIssueKey issueString $ case finishType of
+      FinishWithPullRequest -> finishIssueWithPullRequest
+      FinishWithMerge -> finishIssueWithMerge
   CommitCommand options -> run $ do
     issueKey <- currentIssueKey
     liftIO
@@ -112,6 +108,50 @@ startIssue issueKey = do
   branch <- createBranchForIssueKey issueKey
   liftGit $ Git.checkoutBranch branch
   liftJira $ startProgress issueKey
+
+finishIssueWithPullRequest :: IssueKey -> AppM ()
+finishIssueWithPullRequest issueKey = do
+  brs <- liftGit Git.branchStatus
+  wcs <- liftGit Git.workingCopyStatus
+  case (brs, wcs) of
+    (NoUpstream, _    ) -> throwError $ UserInputException
+      "Your current branch has not been pushed! Cannot create pull request on remote server."
+    (NewCommits, Clean) -> confirmFinish  $
+      unlines [ "You have new commits that haven't yet been pushed to the server."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
+    (NewCommits, Dirty) -> confirmFinish $
+      unlines [ "You have new commits and changes that haven't been comitted yet."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
+    (        _ , Dirty) -> confirmFinish $
+      unlines [ "You have changes that haven't been comitted yet."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
+    otherwise           -> finishIssueWithPullRequest' issueKey
+  where
+    confirmFinish message = do
+      liftIO (putStr message)
+      confirm' >>= bool (return ()) (finishIssueWithPullRequest' issueKey)
+    confirm' = liftIO getChar >>= \case
+      'y' -> return True
+      'n' -> return False
+      otherwise -> confirm'
+
+finishIssueWithPullRequest' :: IssueKey -> AppM ()
+finishIssueWithPullRequest' issueKey = do
+  liftJira $ resolveIssue issueKey
+  openPullRequest' issueKey
+
+finishIssueWithMerge :: IssueKey -> AppM ()
+finishIssueWithMerge issueKey = do
+    liftJira $ closeIssue issueKey
+    source <- branchForIssueKey issueKey
+    target <- RefName . view configDevelopBranch <$> getConfig
+    liftGit $ Git.mergeBranch source target
 
 configTest :: IO ()
 configTest = do
