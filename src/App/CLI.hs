@@ -114,10 +114,23 @@ finishIssueWithPullRequest issueKey = do
   brs <- liftGit Git.branchStatus
   wcs <- liftGit Git.workingCopyStatus
   case (brs, wcs) of
-    (NoUpstream, _    ) -> throwError $ UserInputException "Your current branch has not been pushed! Cannot create pull request on remote server."
-    (NewCommits, Clean) -> confirmFinish "You have new commits that haven't yet been pushed to the server.\nDo you with to continue\n[y/n] "
-    (NewCommits, Dirty) -> confirmFinish "You have new commits and changes that haven't been comitted yet.\nDo you with to continue\n[y/n] "
-    (        _ , Dirty) -> confirmFinish "You have changes that haven't been comitted yet.\nDo you with to continue\n[y/n] "
+    (NoUpstream, _    ) -> throwError $ UserInputException
+      "Your current branch has not been pushed! Cannot create pull request on remote server."
+    (NewCommits, Clean) -> confirmFinish  $
+      unlines [ "You have new commits that haven't yet been pushed to the server."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
+    (NewCommits, Dirty) -> confirmFinish $
+      unlines [ "You have new commits and changes that haven't been comitted yet."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
+    (        _ , Dirty) -> confirmFinish $
+      unlines [ "You have changes that haven't been comitted yet."
+              , "Do you with to continue"
+              , "[y/n] "
+              ]
     otherwise           -> finishIssueWithPullRequest' issueKey
   where
     confirmFinish message = do
