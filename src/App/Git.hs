@@ -37,8 +37,8 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
                                  , MonadIO
                                  )
 
-data BranchStatus = UpToDate | NoUpstream | NewCommits
-data WorkingCopyStatus = Clean | Dirty
+data BranchStatus = UpToDate | NoUpstream | NewCommits deriving ( Show, Eq )
+data WorkingCopyStatus = Clean | Dirty deriving ( Show, Eq )
 
 runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
