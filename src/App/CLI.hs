@@ -166,7 +166,7 @@ showIssueTypes = run $ do
       (t^.itName) ++ ": " ++ (t^.itDescription)
 
 checkoutBranchForIssueKey :: IssueKey -> AppM ()
-checkoutBranchForIssueKey issueKey = checkoutLocalBranch `catchError` const fetchRemoteBranch
+checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBranch
   where
     checkoutLocalBranch = do
       branch <- branchForIssueKey issueKey

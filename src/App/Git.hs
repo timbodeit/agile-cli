@@ -68,12 +68,12 @@ newBranch newbranchName baseBranchName = void $
 checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
   checkoutBranch' branch
-  `catchError` const (withTempStash $ checkoutBranch' branch)
+  `orElse` withTempStash (checkoutBranch' branch)
 
 checkoutRemoteBranch :: RefName -> GitM ()
 checkoutRemoteBranch branch =
   checkoutRemoteBranch' branch
-  `catchError` const (withTempStash $ checkoutRemoteBranch' branch)
+  `orElse` withTempStash (checkoutRemoteBranch' branch)
 
 mergeBranch :: RefName -> RefName -> GitM ()
 mergeBranch (RefName source) target = void $ do

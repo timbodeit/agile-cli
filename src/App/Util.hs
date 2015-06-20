@@ -28,7 +28,7 @@ liftMaybe :: (MonadError e m) => e -> Maybe a -> m a
 liftMaybe ex = maybe (throwError ex) return
 
 tryMaybe :: (MonadError e m) => m a -> m (Maybe a)
-tryMaybe m = liftM Just m `catchError` const (return Nothing)
+tryMaybe m = liftM Just m `orElse` return Nothing
 
 orThrow :: (MonadError e m) => Maybe a -> e -> m a
 orThrow = flip liftMaybe
