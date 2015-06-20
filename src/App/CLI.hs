@@ -200,7 +200,10 @@ createBranchForIssueKey :: IssueKey -> AppM RefName
 createBranchForIssueKey issueKey = do
   issue <- liftJira $ getIssue issueKey
   let issueTypeName = issue^.iType.itName
-  branchDescription <- liftIO $ toBranchName <$> ask "Short description for branch?"
+  liftIO . putStrLn $ "Summary: " ++ issue^.iSummary
+  branchDescription <- liftIO $ toBranchName
+                   <$> askWithDefault (issue^.iSummary.to generateName)
+                       "Short description for branch?"
   config <- getConfig
   let baseBranchName = config^.configRemoteName ++ "/" ++ config^.configDevelopBranch
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
@@ -211,6 +214,7 @@ createBranchForIssueKey issueKey = do
     branchType "Bug" = "bugfix"
     branchType _     = "feature"
     toBranchName = map (\c -> if isSpace c then '-' else c)
+    generateName = toBranchName . map toLower . take 30
 
 createIssue' :: IssueTypeIdentifier -> String -> AppM String
 createIssue' issueType summary = do
