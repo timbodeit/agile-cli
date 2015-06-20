@@ -53,7 +53,7 @@ runCLI options = case options^.cliCommand of
     run $ withIssueKey issueString $ openInBrowser <=< issueBrowserUrl
   SearchCommand jql ->
     run $ searchIssues jql
-  NewCommand issueTypeString start summary -> run $ do
+  NewCommand start issueTypeString summary -> run $ do
     issueType <- parseIssueType issueTypeString
     issueKeyString <- createIssue' issueType summary
     issueKey <- parseIssueKey issueKeyString
@@ -227,15 +227,11 @@ availableIssueTypes = do
 
 -- CLI parsing
 
-parseIssueType :: Maybe String -> AppM IssueTypeIdentifier
-parseIssueType = maybe defaultType resolveAlias
-  where
-    defaultType = IssueTypeName .
-      view (configJiraConfig.jiraDefaultIssueType) <$> getConfig
-    resolveAlias alias = do
-      aliasMap <- view (configJiraConfig.jiraIssueTypeAliases) <$> getConfig
-      return . IssueTypeName $
-        Map.findWithDefault alias alias aliasMap
+parseIssueType :: String -> AppM IssueTypeIdentifier
+parseIssueType typeName = do
+  aliasMap <- view (configJiraConfig.jiraIssueTypeAliases) <$> getConfig
+  let resolvedName = Map.findWithDefault typeName typeName aliasMap
+  return $ IssueTypeName resolvedName
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
