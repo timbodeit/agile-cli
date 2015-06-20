@@ -26,7 +26,7 @@ import           Data.Git
 import           Data.List
 import qualified Data.Map                   as Map
 import           Data.String.Conversions
-import           Jira.API                   hiding (getConfig)
+import           Jira.API                   hiding (getConfig, tryMaybe)
 import           Options.Applicative
 import           System.IO
 import           System.IO.Temp
@@ -99,12 +99,14 @@ searchIssues jql = do
 
 startIssue :: IssueKey -> AppM ()
 startIssue issueKey = do
-  branch <- createBranchForIssueKey issueKey
+  branch <- getOrCreateBranch issueKey
   liftGit $ Git.checkoutBranch branch
-  liftJira $ startProgress issueKey
+  startProgress' issueKey
+  where
+    getOrCreateBranch = orElse <$> branchForIssueKey
+                               <*> createBranchForIssueKey
 
 finishIssueWithPullRequest :: IssueKey -> AppM ()
-
 finishIssueWithPullRequest issueKey = (,)
   <$> liftGit Git.branchStatus
   <*> liftGit Git.workingCopyStatus
@@ -245,6 +247,13 @@ branchForIssueKey issueKey = do
   where
     containsKey (RefName s) = show issueKey `isInfixOf` s
     branchException = UserInputException $ "Branch for issue not found: " ++ show issueKey
+
+startProgress' :: IssueKey -> AppM ()
+startProgress' issueKey = do
+  issue <- liftJira $ getIssue issueKey
+  case issue^.iStatus of
+    InProgress -> return ()
+    _          -> liftJira $ startProgress issueKey
 
 withIssueKey :: Maybe String -> (IssueKey -> AppM a) -> AppM a
 withIssueKey Nothing         = (=<< currentIssueKey)
