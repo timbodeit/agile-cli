@@ -35,6 +35,7 @@ library
                      , base64-bytestring
                      , RSA
                      , http-client
+                     , http-types
                      , string-conversions
                      , transformers
                      , aeson

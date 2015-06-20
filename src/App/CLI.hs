@@ -28,6 +28,7 @@ import           Data.List
 import qualified Data.Map                   as Map
 import           Data.String.Conversions
 import           Jira.API                   hiding (getConfig, tryMaybe)
+import           Network.HTTP.Types.URI
 import           Options.Applicative
 import           System.IO
 import           System.IO.Temp
@@ -54,8 +55,8 @@ runCLI options = case options^.cliCommand of
     run $ withIssue issueString printIssue
   OpenCommand issueString ->
     run $ withIssueKey issueString $ openInBrowser <=< issueBrowserUrl
-  SearchCommand jql ->
-    run $ searchIssues jql
+  SearchCommand searchOptions jql ->
+    run $ searchIssues searchOptions jql
   NewCommand start issueTypeString summary -> run $ do
     issueType <- parseIssueType issueTypeString
     issueKeyString <- createIssue' issueType summary
@@ -94,12 +95,27 @@ runCLI options = case options^.cliCommand of
 printIssue :: Issue -> AppM ()
 printIssue = liftIO . print
 
-searchIssues :: String -> AppM ()
-searchIssues jql = do
-  issues <- liftJira $ searchIssues' jql
-  liftIO $ mapM_ (putStrLn . showIssue) issues
+searchIssues :: SearchOptions -> String -> AppM ()
+searchIssues (SearchOptions allProjects onlyMyIssues inBrowser) search = do
+  jiraConfig <- view configJiraConfig <$> getConfig
+  jql <- parseSearch search
+  let optionConditions = wrapParens . intercalate " AND " $
+                         ["project = "  ++ jiraConfig^.jiraProject  | not allProjects]
+                      ++ ["assignee = " ++ jiraConfig^.jiraUsername | onlyMyIssues]
+  let jql' = intercalate " AND " $
+             [optionConditions | optionConditions /= ""]
+          ++ [jql | jql /= ""]
+
+  if inBrowser
+  then openInBrowser $ jiraConfig^.jiraBaseUrl ++ "/issues/?jql=" ++ urlEncode' jql'
+  else do
+    issues <- liftJira $ searchIssues' jql'
+    liftIO $ mapM_ (putStrLn . showIssue) issues
   where
     showIssue i = i^.iKey ++ ": " ++ i^.iSummary
+    urlEncode' = cs . urlEncode True . cs
+    wrapParens "" = ""
+    wrapParens s  = "(" ++ s ++ ")"
 
 startIssue :: IssueKey -> AppM ()
 startIssue issueKey = do
@@ -262,6 +278,11 @@ parseIssueType typeName = do
   aliasMap <- view (configJiraConfig.jiraIssueTypeAliases) <$> getConfig
   let resolvedName = Map.findWithDefault typeName typeName aliasMap
   return $ IssueTypeName resolvedName
+
+parseSearch :: String -> AppM String
+parseSearch s = do
+  searchMap <- view (configJiraConfig.jiraSearchAliases) <$> getConfig
+  return . trim $ Map.findWithDefault s s searchMap
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do

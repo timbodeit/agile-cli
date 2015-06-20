@@ -70,6 +70,7 @@ doSetupConfigInteractively = do
                               jiraUsername
                               jiraProject
                               defaultIssueTypeMap
+                              defaultSearchAliases
                               jiraConsumerKey
                               jiraSigningKey
                               "" -- Access Token (unknown yet)
