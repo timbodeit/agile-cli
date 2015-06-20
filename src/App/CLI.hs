@@ -47,6 +47,8 @@ runCLI options = case options^.cliCommand of
     configTest
   ShowIssueTypesCommand ->
     showIssueTypes
+  CleanupBranchesCommand ->
+    cleanupLocalBranches
   ShowCommand issueString ->
     run $ withIssue issueString printIssue
   OpenCommand issueString ->
@@ -165,6 +167,17 @@ showIssueTypes = run $ do
     printIssueType t = liftIO . putStrLn $
       (t^.itName) ++ ": " ++ (t^.itDescription)
 
+cleanupLocalBranches :: IO ()
+cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
+                         >>= filterM isClosed
+                         >>= mapM (liftGit . Git.removeBranch)
+  where
+    isClosed (RefName branch) = onError (return False) $ do
+      issueKey <- extractIssueKey branch
+                  `orThrow` GitException "" -- meaningless, as it is catched above
+      issue <- liftJira $ getIssue issueKey
+      return $ issue^.iStatus == Closed
+
 checkoutBranchForIssueKey :: IssueKey -> AppM ()
 checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBranch
   where
@@ -238,15 +251,15 @@ currentIssueKey = do
   (RefName branchName) <- liftGit Git.getCurrentBranch `orThrowM` branchException
   extractIssueKey branchName `orThrow` parseException
   where
-    extractIssueKey :: String -> Maybe IssueKey
-    extractIssueKey s = do
-      groups <-  snd <$> matchRegexPR "/(\\w+)-(\\d+)" s
-      key    <- lookup 1 groups
-      n      <- lookup 2 groups >>= readMaybe
-      return $ IssueKey key (IssueNumber n)
-
     branchException = UserInputException "You are not on a branch"
     parseException  = UserInputException "Can't parse issue from current branch"
+
+extractIssueKey :: String -> Maybe IssueKey
+extractIssueKey s = do
+  groups <- snd <$> matchRegexPR "/(\\w+)-(\\d+)" s
+  key    <- lookup 1 groups
+  n      <- lookup 2 groups >>= readMaybe
+  return $ IssueKey key (IssueNumber n)
 
 branchForIssueKey :: IssueKey -> AppM RefName
 branchForIssueKey issueKey = do
