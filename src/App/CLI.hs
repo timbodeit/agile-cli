@@ -186,6 +186,7 @@ checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBra
       branch <- branchForIssueKey issueKey
       liftGit $ Git.checkoutBranch branch
     fetchRemoteBranch = do
+      gitFetch
       remoteName     <- view configRemoteName <$> getConfig
       remoteBranches <- filter (matchesRemote remoteName)
                     <$> liftGit Git.getRemoteBranches
@@ -246,10 +247,10 @@ availableIssueTypes = do
   return $ snd projectPair
 
 withAsyncGitFetch :: (Async () -> AppM b) -> AppM b
-withAsyncGitFetch = (=<< liftIO (async (run gitFetch')))
+withAsyncGitFetch = (=<< liftIO (async (run gitFetch)))
 
-gitFetch' :: AppM ()
-gitFetch' = do
+gitFetch :: AppM ()
+gitFetch = do
   remote <- view configRemoteName <$> getConfig
   liftGit $ Git.fetch remote
 
