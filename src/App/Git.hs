@@ -63,7 +63,7 @@ workingCopyStatus = do
 
 newBranch :: String -> String -> GitM ()
 newBranch newbranchName baseBranchName = void $
-  git "branch" [cs newbranchName, cs baseBranchName]
+  git "branch" ["--no-track", cs newbranchName, cs baseBranchName]
 
 checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
