@@ -93,9 +93,17 @@ resolveBranch branch = withGit $ \git -> do
   rev <- liftIO $ resolveRevision git (Revision branch [])
   rev `orThrow` GitException ("Unknown branch: " ++ branch)
 
+removeBranch :: RefName -> GitM ()
+removeBranch (RefName branch) = void $
+  git "branch" ["-d", cs branch]
+
 getLocalBranches :: GitM [RefName]
 getLocalBranches = branchesFromOutput <$>
                    git "branch" ["--list"]
+
+getLocalMergedBranches :: GitM [RefName]
+getLocalMergedBranches = branchesFromOutput <$>
+                         git "branch" ["--list", "--merged"]
 
 getRemoteBranches :: GitM [RefName]
 getRemoteBranches = branchesFromOutput <$>
