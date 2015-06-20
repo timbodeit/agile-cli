@@ -54,7 +54,6 @@ doSetupConfigInteractively = do
   jiraBaseUrl       <- ask "JIRA Base URL?"
   jiraUsername      <- ask "JIRA username?"
   jiraProject       <- ask "JIRA project key?"
-  jiraDefaultType   <- askWithDefault "Bug" "JIRA default issue type?"
   jiraConsumerKey   <- ask "JIRA OAuth consumer key?"
   jiraSigningKey    <- ask "JIRA OAuth signing key?"
 
@@ -70,7 +69,6 @@ doSetupConfigInteractively = do
   let jiraConfig = JiraConfig jiraBaseUrl
                               jiraUsername
                               jiraProject
-                              jiraDefaultType
                               defaultIssueTypeMap
                               jiraConsumerKey
                               jiraSigningKey

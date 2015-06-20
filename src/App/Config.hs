@@ -29,7 +29,6 @@ defaultJiraConfig = JiraConfig
   { _jiraBaseUrl             = "http://jira.example.com"
   , _jiraUsername            = "myusername"
   , _jiraProject             = "MAP"
-  , _jiraDefaultIssueType    = "Bug"
   , _jiraIssueTypeAliases    = defaultIssueTypeMap
   , _jiraOAuthConsumerKey    = "agile-cli"
   , _jiraOAuthSigningKeyPath = "/path/to/key.pem"

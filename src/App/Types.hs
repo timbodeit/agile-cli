@@ -20,7 +20,6 @@ data JiraConfig = JiraConfig
   { _jiraBaseUrl             :: String
   , _jiraUsername            :: String
   , _jiraProject             :: String
-  , _jiraDefaultIssueType    :: String
   , _jiraIssueTypeAliases    :: Map.Map String String
   , _jiraOAuthConsumerKey    :: String
   , _jiraOAuthSigningKeyPath :: String
