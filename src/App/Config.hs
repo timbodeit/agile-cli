@@ -5,6 +5,7 @@ module App.Config where
 import           App.Types
 import           App.Util
 
+import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad

@@ -3,6 +3,7 @@ module App.Util where
 import           App.Types
 
 import           System.Process
+import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except

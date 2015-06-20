@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -6,6 +7,7 @@ module App.Git where
 
 import           App.Util
 
+import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad.Except
@@ -17,12 +19,13 @@ import           Data.Maybe
 import qualified Data.Set                   as Set
 import           Data.String.Conversions
 import qualified Data.Text                  as T
+import           Data.Typeable
 import           Shelly                     hiding (find)
 
 type GitCommand = T.Text
 type GitOption  = T.Text
 
-newtype GitException = GitException String
+newtype GitException = GitException String deriving Typeable
 
 instance Show GitException where
   show (GitException s) = s
