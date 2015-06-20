@@ -87,6 +87,12 @@ openInBrowser' url config =
 ask :: String -> IO String
 ask question = putStrLn question >> putStr' "> " >> getLine'
 
+askWithDefault :: String -> String -> IO String
+askWithDefault defaultAnswer question =
+  ask (question ++ " [" ++ defaultAnswer ++ "]") >$< \case
+    "" -> defaultAnswer
+    s  -> s
+
 runUserChoice :: String -> [(String, IO a)] -> IO a
 runUserChoice question answers = do
   let question' = unlines $ question : renderAnswers

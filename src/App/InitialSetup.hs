@@ -54,7 +54,7 @@ doSetupConfigInteractively = do
   jiraBaseUrl       <- ask "JIRA Base URL?"
   jiraUsername      <- ask "JIRA username?"
   jiraProject       <- ask "JIRA project key?"
-  jiraDefaultType   <- ask "JIRA default issue type?"
+  jiraDefaultType   <- askWithDefault "Bug" "JIRA default issue type?"
   jiraConsumerKey   <- ask "JIRA OAuth consumer key?"
   jiraSigningKey    <- ask "JIRA OAuth signing key?"
 
@@ -63,9 +63,9 @@ doSetupConfigInteractively = do
   stashRepo         <- ask "Stash repo name?"
   stashReviewers    <- ask "Stash reviewers (comma-separated)?" >$< parseCommaList
 
-  developBranch     <- ask "Git develop branch name?"
-  remoteName        <- fillDefault "origin" <$> ask "Name of the remote? [origin]"
-  openCommand       <- ask "Command to open URLs? (e.g. open on OS X)"
+  developBranch     <- askWithDefault "develop" "Git develop branch name?"
+  remoteName        <- askWithDefault "origin"  "Name of the remote?"
+  openCommand       <- askWithDefault "open"    "Command to open URLs? (e.g. open on OS X)"
 
   let jiraConfig = JiraConfig jiraBaseUrl
                               jiraUsername
@@ -89,8 +89,6 @@ doSetupConfigInteractively = do
                   openCommand
   where
     parseCommaList = map (trim . cs) . T.splitOn "," . cs
-    fillDefault replacement input | input == "" = replacement
-                                  | otherwise   = input
 
 doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
 doSetupFromExistingConfig (configPath, config) =
