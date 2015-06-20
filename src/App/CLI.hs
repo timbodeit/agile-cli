@@ -61,6 +61,7 @@ runCLI options = case options^.cliCommand of
     issueKeyString <- createIssue' issueType summary
     issueKey <- parseIssueKey issueKeyString
     openInBrowser =<< issueBrowserUrl issueKey
+    liftIO $ print issueKey
     when start $ startIssue issueKey
   StartCommand issueString ->
     run $ withIssueKey issueString startIssue
