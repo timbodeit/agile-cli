@@ -44,6 +44,9 @@ data WorkingCopyStatus = Clean | Dirty deriving ( Show, Eq )
 runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
 
+fetch :: String -> GitM ()
+fetch remote = void $ git "fetch" [cs remote]
+
 branchStatus :: GitM BranchStatus
 branchStatus = do
   local     <- git "rev-parse" ["HEAD"]

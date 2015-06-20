@@ -55,6 +55,7 @@ library
                      , parsec
                      , containers
                      , optparse-applicative
+                     , async
                      --, readline
   default-language:    Haskell2010
 

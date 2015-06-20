@@ -15,6 +15,7 @@ import           App.Types
 import           App.Util
 
 import           Control.Applicative        hiding ((<|>))
+import           Control.Concurrent.Async
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
@@ -185,6 +186,7 @@ checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBra
       branch <- branchForIssueKey issueKey
       liftGit $ Git.checkoutBranch branch
     fetchRemoteBranch = do
+      gitFetch
       remoteName     <- view configRemoteName <$> getConfig
       remoteBranches <- filter (matchesRemote remoteName)
                     <$> liftGit Git.getRemoteBranches
@@ -197,7 +199,7 @@ checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBra
                                     "Branch for issue not found: " ++ show issueKey
 
 createBranchForIssueKey :: IssueKey -> AppM RefName
-createBranchForIssueKey issueKey = do
+createBranchForIssueKey issueKey = withAsyncGitFetch $ \asyncFetch -> do
   issue <- liftJira $ getIssue issueKey
   let issueTypeName = issue^.iType.itName
   liftIO . putStrLn $ "Summary: " ++ issue^.iSummary
@@ -208,6 +210,8 @@ createBranchForIssueKey issueKey = do
   let baseBranchName = config^.configRemoteName ++ "/" ++ config^.configDevelopBranch
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
       branchName = branchType issueTypeName ++ "/" ++ branchSuffix
+
+  liftIO $ wait asyncFetch
   liftGit $ Git.newBranch branchName baseBranchName
   return $ RefName branchName
   where
@@ -241,6 +245,14 @@ availableIssueTypes = do
     (ConfigException $ "Project not found: " ++ projectKey) $
     find (\p -> p^._1.pKey == projectKey) projectPairs
   return $ snd projectPair
+
+withAsyncGitFetch :: (Async () -> AppM b) -> AppM b
+withAsyncGitFetch = (=<< liftIO (async (run gitFetch)))
+
+gitFetch :: AppM ()
+gitFetch = do
+  remote <- view configRemoteName <$> getConfig
+  liftGit $ Git.fetch remote
 
 -- CLI parsing
 
