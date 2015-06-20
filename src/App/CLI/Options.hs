@@ -19,7 +19,7 @@ data CLICommand = InitCommand
                 | ShowCommand (Maybe String)
                 | OpenCommand (Maybe String)
                 | SearchCommand String
-                | NewCommand (Maybe String) Bool String
+                | NewCommand Bool String String
                 | StartCommand (Maybe String)
                 | StopCommand (Maybe String)
                 | ResolveCommand (Maybe String)
@@ -96,19 +96,18 @@ searchCommandParser = SearchCommand <$> strArgument
 
 newCommandParser :: Parser CLICommand
 newCommandParser = NewCommand
-  <$> optional (
-    strOption ( short 't'
-             <> long "type"
-             <> metavar "ISSUETYPE"
-             <> help "Issue Type - use the issuetypes command for available options"
-             ))
-  <*> switch ( short 's'
+  <$> switch ( short 's'
             <> long "start"
             <> help "Whether to start the issue after creation"
              )
-  <*> strArgument ( metavar "SUMMARY"
-                 <> help "Issue Summary"
+  <*> strArgument ( metavar "ISSUETYPE"
+                 <> help "Issue type (alias) - use the issuetypes command for available options"
                   )
+  <*> (unwords <$> some (strArgument ( metavar "SUMMARY"
+                                    <> help "Issue summary"
+                                     )
+                        )
+      )
 
 checkoutCommandParser :: Parser CLICommand
 checkoutCommandParser = CheckoutCommand <$> strArgument
