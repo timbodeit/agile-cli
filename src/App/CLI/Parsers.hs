@@ -3,11 +3,11 @@ module App.CLI.Parsers where
 import           App.Types
 import           App.Util
 
+import           Control.Applicative     ((<$>))
 import           Control.Lens
 import           Data.Either.Combinators
 import           Jira.API                hiding (getConfig)
 import           Text.Parsec
-import           Text.Parsec.Char
 
 type StringParser a = Parsec String () a
 

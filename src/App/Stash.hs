@@ -3,6 +3,7 @@ module App.Stash where
 import           App.Types
 import           App.Util
 
+import           Control.Applicative
 import           Control.Lens
 import qualified Data.ByteString as BS
 import           Data.Git

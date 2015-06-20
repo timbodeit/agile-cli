@@ -6,6 +6,7 @@ import           App.Config
 import           App.Types
 import           App.Util
 
+import           Control.Applicative
 import           Control.Lens
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Lazy    as LBS

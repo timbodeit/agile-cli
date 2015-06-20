@@ -5,11 +5,11 @@
 
 module App.Types where
 
+import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import           Control.Monad.State
 import           Control.Monad.Trans.Either
 import           Data.Aeson.TH
 import qualified Data.Map                   as Map
