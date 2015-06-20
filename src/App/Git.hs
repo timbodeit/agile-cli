@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 
@@ -9,14 +10,10 @@ import           App.Util
 
 import           Control.Applicative
 import           Control.Exception
-import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Data.Git
 import           Data.Git.Revision
-import           Data.List
-import           Data.Maybe
-import qualified Data.Set                   as Set
 import           Data.String.Conversions
 import qualified Data.Text                  as T
 import           Data.Typeable
@@ -40,6 +37,7 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
                                  , MonadIO
                                  )
 
+
 data BranchStatus = UpToDate | NoUpstream | NewCommits deriving ( Show, Eq )
 data WorkingCopyStatus = Clean | Dirty deriving ( Show, Eq )
 
@@ -48,21 +46,20 @@ runGit = runEitherT . unGitM
 
 branchStatus :: GitM BranchStatus
 branchStatus = do
-  local    <- git "rev-parse" ["HEAD"]
-  upstream <- tryMaybe $ git "rev-parse" ["HEAD@{u}"]
-  return $ case upstream of
+  local     <- git "rev-parse" ["HEAD"]
+  mUpstream <- git "rev-parse" ["HEAD@{u}"] >>> tryMaybe
+  return $ case mUpstream of
     Nothing                           -> NoUpstream
     Just upstream | upstream == local -> UpToDate
                   | otherwise         -> NewCommits
-  where tryMaybe k = (Just <$> k) `catchError` const (return Nothing)
 
 workingCopyStatus :: GitM WorkingCopyStatus
 workingCopyStatus = do
-  (output, err, code) <- git' "diff" ["--quiet","HEAD"]
+  (_, err, code) <- git' "diff" ["--quiet", "HEAD"]
   case code of
     0 -> return Clean
     1 -> return Dirty
-    otherwise -> throwError $ GitException $ cs err
+    _ -> throwError . GitException $ cs err
 
 newBranch :: String -> String -> GitM ()
 newBranch newbranchName baseBranchName = void $
@@ -99,25 +96,23 @@ getBranches = do
   where parse = trim . drop 2
 
 getCurrentBranch :: GitM (Maybe RefName)
-getCurrentBranch = do
-  output <- git "rev-parse" ["--abbrev-ref", "HEAD"]
-  return $ case trim (cs output) of
+getCurrentBranch =
+  git "rev-parse" ["--abbrev-ref", "HEAD"]
+  >$< (trim . cs)
+  >$< \case
     "HEAD"     -> Nothing
     branchName -> Just $ RefName branchName
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
-git command options = do
-  (output, err, code) <- git' command options
-  if code == 0
-    then return output
-    else throwError $ GitException $ cs err
+git command options = git' command options >>= \case
+  (output, err, code) | code == 0 -> return output
+                      | otherwise -> throwError . GitException $ cs err
 
 git' :: GitCommand -> [GitOption] -> GitM (T.Text, T.Text, Int)
-git' command options = shelly' $ do
-    output <- run "git" (command : options)
-    err    <- lastStderr
-    code   <- lastExitCode
-    return (output, err, code)
+git' command options = shelly' $ (,,)
+                       <$> run "git" (command : options)
+                       <*> lastStderr
+                       <*> lastExitCode
   where
     shelly' = liftIO . shelly . silently . errExit False
 

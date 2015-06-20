@@ -6,38 +6,31 @@ module App.CLI (execCLI) where
 import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
+import           App.Git                    (BranchStatus (..),
+                                             WorkingCopyStatus (..))
 import qualified App.Git                    as Git
-import           App.Git (BranchStatus(..), WorkingCopyStatus(..))
 import           App.InitialSetup
 import           App.Stash
 import           App.Types
 import           App.Util
 
 import           Control.Applicative        hiding ((<|>))
-import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
-import           Data.Aeson
 import           Data.Bool
 import           Data.Char
 import           Data.Either.Combinators
 import           Data.Git
 import           Data.List
 import qualified Data.Map                   as Map
-import           Data.Maybe
 import           Data.String.Conversions
-import           Data.Typeable
 import           Jira.API                   hiding (getConfig)
 import           Options.Applicative
 import           System.IO
 import           System.IO.Temp
-import           System.Directory
-import           System.Environment
 import           System.Process
-import           Text.Parsec
-import           Text.Parsec.Char
 import           Text.Read
 import           Text.RegexPR
 
@@ -55,7 +48,7 @@ runCLI options = case options^.cliCommand of
   ShowIssueTypesCommand ->
     showIssueTypes
   ShowCommand issueString ->
-    run $ withIssue issueString showIssue
+    run $ withIssue issueString printIssue
   OpenCommand issueString ->
     run $ withIssueKey issueString $ openInBrowser <=< issueBrowserUrl
   SearchCommand jql ->
@@ -81,20 +74,21 @@ runCLI options = case options^.cliCommand of
   CreatePullRequestCommand issueString ->
     run $ withIssueKey issueString openPullRequest'
   FinishCommand finishType issueString ->
-    run $ withIssueKey issueString $ case finishType of
+    run $ withIssueKey issueString $
+    case finishType of
       FinishWithPullRequest -> finishIssueWithPullRequest
-      FinishWithMerge -> finishIssueWithMerge
-  CommitCommand options -> run $ do
+      FinishWithMerge       -> finishIssueWithMerge
+  CommitCommand gitOptions -> run $ do
     issueKey <- currentIssueKey
     liftIO
       $ withSystemTempFile "agile-cli.gittemplate"
       $ \tempPath tempHandle -> do
         hPutStr tempHandle $ show issueKey ++ " "
         hClose tempHandle
-        rawSystem "git" $ ["commit", "-t", cs tempPath, "-e"] ++ options
+        rawSystem "git" $ ["commit", "-t", cs tempPath, "-e"] ++ gitOptions
 
-showIssue :: Issue -> AppM ()
-showIssue = liftIO . print
+printIssue :: Issue -> AppM ()
+printIssue = liftIO . print
 
 searchIssues :: String -> AppM ()
 searchIssues jql = do
@@ -110,10 +104,11 @@ startIssue issueKey = do
   liftJira $ startProgress issueKey
 
 finishIssueWithPullRequest :: IssueKey -> AppM ()
-finishIssueWithPullRequest issueKey = do
-  brs <- liftGit Git.branchStatus
-  wcs <- liftGit Git.workingCopyStatus
-  case (brs, wcs) of
+
+finishIssueWithPullRequest issueKey = (,)
+  <$> liftGit Git.branchStatus
+  <*> liftGit Git.workingCopyStatus
+  >>= \case
     (NoUpstream, _    ) -> throwError $ UserInputException
       "Your current branch has not been pushed! Cannot create pull request on remote server."
     (NewCommits, Clean) -> confirmFinish  $
@@ -131,7 +126,7 @@ finishIssueWithPullRequest issueKey = do
               , "Do you with to continue"
               , "[y/n] "
               ]
-    otherwise           -> finishIssueWithPullRequest' issueKey
+    _           -> finishIssueWithPullRequest' issueKey
   where
     confirmFinish message = do
       liftIO (putStr message)
@@ -139,7 +134,7 @@ finishIssueWithPullRequest issueKey = do
     confirm' = liftIO getChar >>= \case
       'y' -> return True
       'n' -> return False
-      otherwise -> confirm'
+      _ -> confirm'
 
 finishIssueWithPullRequest' :: IssueKey -> AppM ()
 finishIssueWithPullRequest' issueKey = do

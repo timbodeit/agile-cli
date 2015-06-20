@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase    #-}
 {-# LANGUAGE TupleSections #-}
 
 module App.Config where
@@ -8,7 +9,6 @@ import           App.Util
 import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Either
 import           Data.Aeson
@@ -20,7 +20,6 @@ import           Data.String.Conversions
 import qualified Jira.API                   as J
 import           System.Directory
 import           System.FilePath
-import           System.Posix.Directory
 
 configFileName :: FilePath
 configFileName = ".agile"
@@ -86,9 +85,8 @@ readConfig path = runEitherT $ do
     convertException = ConfigException . show
 
 readConfig' :: IO (Either AppException (FilePath, Config))
-readConfig' = do
-  path <- searchConfig
-  case path of
+readConfig' =
+  searchConfig >>= \case
     Nothing   -> return $ Left (ConfigException "Config file not found")
     Just path -> (path,) <$$> readConfig path
 

@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module App.Util where
 
 import           App.Types
@@ -7,7 +9,6 @@ import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Either
 import           Data.Char
 import           GHC.IO.Handle
@@ -15,11 +16,19 @@ import           GHC.IO.Handle.FD
 import           Text.Read
 import           Text.RegexPR
 
+-- Error handling
+
+toMaybe :: Either e a -> Maybe a
+toMaybe = either (const Nothing) Just
+
 hoistEitherIO :: IO (Either e a) -> EitherT e IO a
 hoistEitherIO = hoistEither <=< liftIO
 
 liftMaybe :: (MonadError e m) => e -> Maybe a -> m a
 liftMaybe ex = maybe (throwError ex) return
+
+tryMaybe :: (MonadError e m) => m a -> m (Maybe a)
+tryMaybe m = liftM Just m `catchError` const (return Nothing)
 
 orThrow :: (MonadError e m) => Maybe a -> e -> m a
 orThrow = flip liftMaybe
@@ -36,6 +45,11 @@ liftEitherIO ioe = liftIO ioe >>= either throwError return
 liftEitherM :: (MonadError e m) => m (Either e a) -> m a
 liftEitherM = (>>= either throwError return)
 
+-- Custom operators
+
+(>>>) :: a -> (a -> b) -> b
+(>>>) = flip ($)
+
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
 
@@ -48,12 +62,13 @@ liftEitherM = (>>= either throwError return)
 (<$<) :: Functor f => (a -> b) -> (c -> f a) -> c -> f b
 (<$<) f g = (f <$>) . g
 
+-- String handling
+
 trim :: String -> String
 trim = go . go
   where go = reverse . dropWhile isSpace
 
-toMaybe :: Either e a -> Maybe a
-toMaybe = either (const Nothing) Just
+-- User interaction
 
 openInBrowser :: String -> AppM ()
 openInBrowser url = getConfig >>= liftIO . openInBrowser' url
@@ -63,22 +78,21 @@ openInBrowser' url config =
   let command = view configBrowserCommand config
   in  void . createProcess . shell $ command ++ " '" ++ url ++ "'"
 
-
 ask :: String -> IO String
 ask question = putStrLn question >> putStr' "> " >> getLine'
 
 runUserChoice :: String -> [(String, IO a)] -> IO a
 runUserChoice question answers = do
   let question' = unlines $ question : renderAnswers
-  answer <- readMaybe <$> ask question'
-  case answer of
+  readMaybe <$> ask question' >>= \case
     Nothing -> tryAgain
-    Just i  -> if i > 0 && i <= length answers
-               then snd (answers !! (i - 1))
-               else tryAgain
+    Just i | i > 0 && i <= length answers -> snd (answers !! (i - 1))
+           | otherwise -> tryAgain
   where
     tryAgain = putStrLn "Invalid answer." >> runUserChoice question answers
     renderAnswers = zipWith renderAnswer [1..] $ map fst answers
+
+    renderAnswer :: Int -> String -> String
     renderAnswer i answer = "[" ++ show i ++ "] " ++ answer
 
 putStr' :: String -> IO ()
@@ -86,6 +100,8 @@ putStr' s = putStr s >> hFlush stdout
 
 getLine' :: IO String
 getLine' = trim <$> getLine
+
+-- Regular Expression
 
 -- Match regex with string and return the first group match
 (=~~) :: String -> String -> Maybe String

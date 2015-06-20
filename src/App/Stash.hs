@@ -5,7 +5,6 @@ import           App.Util
 
 import           Control.Applicative
 import           Control.Lens
-import qualified Data.ByteString as BS
 import           Data.Git
 import           Data.List
 

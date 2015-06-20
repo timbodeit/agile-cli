@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module App.InitialSetup where
@@ -10,23 +11,17 @@ import           Control.Applicative
 import           Control.Lens
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Lazy    as LBS
-import           Data.Either.Combinators
 import           Data.List
-import qualified Data.Map                as Map
-import           Data.Maybe
 import           Data.String.Conversions
 import qualified Data.Text               as T
 import qualified Jira.API                as J
-import           Network.HTTP.Client
+import           Network.HTTP.Client     hiding (path)
 import           System.Directory
-import           System.Process
-import           Text.Read
 import           Web.Authenticate.OAuth
 
 doInitSetup :: IO ()
-doInitSetup = do
-  existingConfig <- readConfig'
-  case existingConfig of
+doInitSetup =
+  readConfig' >>= \case
     Left _  -> doSetupConfigFromScratch
     Right c -> doSetupFromExistingConfig c
 
@@ -118,6 +113,7 @@ doSetupFromExistingConfig (configPath, config) =
       [ copyFile configPath configFileName
       , runWizard
       , doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
+
       ]
 
 doInitAuth :: Config -> IO (Maybe Config)
@@ -139,7 +135,7 @@ doInitAuth config =
       putStrLn "Hit enter when you are finished."
       openInBrowser' authUrl config
       print authUrl
-      getChar
+      _ <- getChar
       accessToken <- getAccessToken oauth requestToken manager
       return $ extractAccessToken accessToken
 
