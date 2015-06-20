@@ -165,11 +165,23 @@ showIssueTypes = run $ do
     printIssueType t = liftIO . putStrLn $
       (t^.itName) ++ ": " ++ (t^.itDescription)
 
-checkoutBranchForIssueKey :: IssueKey -> AppM RefName
-checkoutBranchForIssueKey issueKey = do
-  branch <- branchForIssueKey issueKey
-  liftGit $ Git.checkoutBranch branch
-  return branch
+checkoutBranchForIssueKey :: IssueKey -> AppM ()
+checkoutBranchForIssueKey issueKey = checkoutLocalBranch `catchError` const fetchRemoteBranch
+  where
+    checkoutLocalBranch = do
+      branch <- branchForIssueKey issueKey
+      liftGit $ Git.checkoutBranch branch
+    fetchRemoteBranch = do
+      remoteName     <- view configRemoteName <$> getConfig
+      remoteBranches <- filter (matchesRemote remoteName)
+                    <$> liftGit Git.getRemoteBranches
+      remoteBranch   <- find (matchesIssueKey issueKey) remoteBranches
+                        `orThrow` branchNotFoundException
+      liftGit $ Git.checkoutRemoteBranch remoteBranch
+        where
+          matchesRemote remoteName (RefName s) = (remoteName ++ "/") `isPrefixOf` s
+          branchNotFoundException = UserInputException $
+                                    "Branch for issue not found: " ++ show issueKey
 
 createBranchForIssueKey :: IssueKey -> AppM RefName
 createBranchForIssueKey issueKey = do
@@ -242,10 +254,9 @@ currentIssueKey = do
 
 branchForIssueKey :: IssueKey -> AppM RefName
 branchForIssueKey issueKey = do
-  branches <- liftGit Git.getBranches
-  find containsKey branches `orThrow` branchException
+  branches <- liftGit Git.getLocalBranches
+  find (matchesIssueKey issueKey) branches `orThrow` branchException
   where
-    containsKey (RefName s) = show issueKey `isInfixOf` s
     branchException = UserInputException $ "Branch for issue not found: " ++ show issueKey
 
 startProgress' :: IssueKey -> AppM ()
@@ -261,6 +272,9 @@ withIssueKey (Just issueKey) = (=<< parseIssueKey issueKey)
 
 withIssue :: Maybe String -> (Issue -> AppM a) -> AppM a
 withIssue s f = withIssueKey s (f <=< liftJira . getIssue)
+
+matchesIssueKey :: IssueKey -> RefName -> Bool
+matchesIssueKey issueKey (RefName s) = show issueKey `isInfixOf` s
 
 -- App Monad
 

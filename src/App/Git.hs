@@ -67,7 +67,13 @@ newBranch newbranchName baseBranchName = void $
 
 checkoutBranch :: RefName -> GitM ()
 checkoutBranch branch =
-  checkoutBranch' branch `catchError` const (stashAndCheckoutBranch branch)
+  checkoutBranch' branch
+  `catchError` const (withTempStash $ checkoutBranch' branch)
+
+checkoutRemoteBranch :: RefName -> GitM ()
+checkoutRemoteBranch branch =
+  checkoutRemoteBranch' branch
+  `catchError` const (withTempStash $ checkoutRemoteBranch' branch)
 
 mergeBranch :: RefName -> RefName -> GitM ()
 mergeBranch (RefName source) target = void $ do
@@ -78,22 +84,22 @@ checkoutBranch' :: RefName -> GitM ()
 checkoutBranch' (RefName branch) = void $
   git "checkout" [cs branch]
 
-stashAndCheckoutBranch :: RefName -> GitM ()
-stashAndCheckoutBranch branch = void $ do
-  git "stash" []
-  checkoutBranch' branch
-  git "stash" ["pop"]
+checkoutRemoteBranch' :: RefName -> GitM ()
+checkoutRemoteBranch' (RefName branch) = void $
+  git "checkout" ["-t", cs branch]
 
 resolveBranch :: String -> GitM Ref
 resolveBranch branch = withGit $ \git -> do
   rev <- liftIO $ resolveRevision git (Revision branch [])
   rev `orThrow` GitException ("Unknown branch: " ++ branch)
 
-getBranches :: GitM [RefName]
-getBranches = do
-  output <- cs <$> git "branch" ["--list"]
-  return . map (RefName . parse) $ lines output
-  where parse = trim . drop 2
+getLocalBranches :: GitM [RefName]
+getLocalBranches = branchesFromOutput <$>
+                   git "branch" ["--list"]
+
+getRemoteBranches :: GitM [RefName]
+getRemoteBranches = branchesFromOutput <$>
+                    git "branch" ["--list", "-r"]
 
 getCurrentBranch :: GitM (Maybe RefName)
 getCurrentBranch =
@@ -102,6 +108,17 @@ getCurrentBranch =
   >$< \case
     "HEAD"     -> Nothing
     branchName -> Just $ RefName branchName
+
+branchesFromOutput :: T.Text -> [RefName]
+branchesFromOutput = map (RefName . parse) . lines . cs
+  where parse = trim . drop 2
+
+withTempStash :: GitM a -> GitM a
+withTempStash m = do
+  git "stash" []
+  r <- m
+  git "stash" ["pop"]
+  return r
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
 git command options = git' command options >>= \case
