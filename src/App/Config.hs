@@ -70,8 +70,8 @@ defaultSearchAliases = Map.fromList
   , "next"       ~> "status = open or status = reopened order by priority"
   ]
 
-getJiraConfig :: Config -> IO J.JiraConfig
-getJiraConfig c = do
+getJiraApiConfig :: Config -> IO J.JiraConfig
+getJiraApiConfig c = do
   pk <- J.readPemPrivateKey =<< readFile (c^.configJiraConfig.jiraOAuthSigningKeyPath)
   let authConfig = J.OAuthConfig (c^.configJiraConfig.jiraOAuthConsumerKey)
                                  pk
