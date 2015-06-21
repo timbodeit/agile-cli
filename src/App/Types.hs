@@ -63,6 +63,7 @@ data AppException = JiraApiException JiraException
                   | AuthException String
                   | UserInputException String
                   | GitException String
+                  | IOException String
                   deriving (Show, Typeable)
 
 instance Exception AppException
@@ -73,8 +74,13 @@ newtype AppM a = AppM { unAppM :: ReaderT (FilePath, Config) (EitherT AppExcepti
                                  , Monad
                                  , MonadReader (FilePath, Config)
                                  , MonadError AppException
-                                 , MonadIO
                                  )
+
+instance MonadIO AppM where
+  liftIO m = (AppM . lift . lift $ try m) >>= either handleError return
+    where
+      handleError :: SomeException -> AppM a
+      handleError e = throwError . IOException $ show e
 
 runApp :: FilePath -> Config -> AppM a -> IO (Either AppException a)
 runApp configPath config m =
