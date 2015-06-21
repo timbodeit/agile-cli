@@ -108,7 +108,7 @@ doSetupFromExistingConfig (configPath, config) =
        in runUserChoice question availableAnswers
   else doInitAuth config >>= either handleAppException (writeConfigTo configPath)
   where
-    question = unlines
+    question = unlines'
       [ "Config file with authentication info found at " ++ configPath
       , "What do you want to do?"
       ]

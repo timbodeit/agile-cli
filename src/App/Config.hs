@@ -92,7 +92,7 @@ readPrivateKey path = tryWith toPrivateKeyException $
   where
     tryWith f = fmap (mapLeft f) . try
     toPrivateKeyException :: SomeException -> AppException
-    toPrivateKeyException e = ConfigException $ unlines
+    toPrivateKeyException e = ConfigException $ unlines'
       [ "Failed to load your private key (using path: '" ++ path ++ "')"
       , ""
       , "Error was:"
