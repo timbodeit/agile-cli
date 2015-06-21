@@ -173,10 +173,8 @@ finishIssueWithMerge issueKey = do
 
 configTest :: IO ()
 configTest = do
-  result <- runApp' . liftJira $ getRaw' "application-properties"
-  either handleError (const $ putStrLn "Config seems OK.") result
-  where
-    handleError e = putStrLn $ "Error while checking config:\n" ++ show e
+  run . liftJira $ getRaw' "application-properties"
+  putStrLn "Config seems OK."
 
 showIssueTypes :: IO ()
 showIssueTypes = run $ do
