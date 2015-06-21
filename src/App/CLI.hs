@@ -335,18 +335,9 @@ runApp' m = runEitherT $ do
 liftJira :: JiraM a -> AppM a
 liftJira m = do
   config <- getConfig
-  jiraApiConfig <- liftIO (getJiraApiConfig config) `catchError` privateKeyException
+  jiraApiConfig <- liftEitherIO $ getJiraApiConfig config
   result <- liftIO $ runJira jiraApiConfig m
   either (throwError . JiraApiException) return result
-  where
-    privateKeyException e = do
-      keyPath <- view (configJiraConfig.jiraOAuthSigningKeyPath) <$> getConfig
-      throwError . ConfigException $ unlines
-        [ "Failed to load your private key (using path: '" ++ keyPath ++ "')"
-        , ""
-        , "Error was:"
-        , show e
-        ]
 
 liftGit :: Git.GitM a -> AppM a
 liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
