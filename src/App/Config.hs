@@ -6,11 +6,11 @@ module App.Config where
 import           App.Types
 import           App.Util
 
-import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Either
+import           Crypto.Types.PubKey.RSA    (PrivateKey (..))
 import           Data.Aeson
 import qualified Data.Aeson.Encode.Pretty   as P
 import qualified Data.ByteString.Lazy       as LBS
@@ -70,28 +70,44 @@ defaultSearchAliases = Map.fromList
   , "next"       ~> "status = open or status = reopened order by priority"
   ]
 
-getJiraConfig :: Config -> IO J.JiraConfig
-getJiraConfig c = do
-  pk <- J.readPemPrivateKey =<< readFile (c^.configJiraConfig.jiraOAuthSigningKeyPath)
-  let authConfig = J.OAuthConfig (c^.configJiraConfig.jiraOAuthConsumerKey)
-                                 pk
-                                 (c^.configJiraConfig.jiraOAuthAccessToken)
-                                 (c^.configJiraConfig.jiraOAuthAccessSecret)
+-- Config loading
 
-  return $ J.JiraConfig (c^.configJiraConfig.jiraBaseUrl) authConfig
+-- Since AppM cannot be used without an existing config,
+-- errors are captured as AppExceptions in an either type.
+type AppIO a = IO (Either AppException a)
 
-readConfig :: FilePath -> IO (Either AppException Config)
+getJiraApiConfig :: Config -> AppIO J.JiraConfig
+getJiraApiConfig config =
+  let jiraConfig    = config^.configJiraConfig
+      authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
+                                    pk
+                                    (jiraConfig^.jiraOAuthAccessToken)
+                                    (jiraConfig^.jiraOAuthAccessSecret)
+      jiraApiConfig = J.JiraConfig (jiraConfig^.jiraBaseUrl) . authConfig
+  in jiraApiConfig <$$> readPrivateKey (jiraConfig^.jiraOAuthSigningKeyPath)
+
+readPrivateKey :: FilePath -> AppIO PrivateKey
+readPrivateKey path = tryWith toPrivateKeyException $
+  J.readPemPrivateKey =<< readFile path
+  where
+    tryWith f = fmap (mapLeft f) . try
+    toPrivateKeyException :: SomeException -> AppException
+    toPrivateKeyException e = ConfigException $ unlines
+      [ "Failed to load your private key (using path: '" ++ path ++ "')"
+      , ""
+      , "Error was:"
+      , show e
+      ]
+
+readConfig :: FilePath -> AppIO Config
 readConfig path = runEitherT $ do
-  rawConfig <- hoistEitherIO (mapLeft convertException <$> readConfigFile path)
+  rawConfig <- hoistEitherIO $ readConfigFile path
   hoistEither $ parseConfig rawConfig
   where
-    readConfigFile :: FilePath -> IO (Either SomeException String)
+    readConfigFile :: FilePath -> AppIO String
     readConfigFile = try . readFile
 
-    convertException :: SomeException -> AppException
-    convertException = ConfigException . show
-
-readConfig' :: IO (Either AppException (FilePath, Config))
+readConfig' :: AppIO (FilePath, Config)
 readConfig' =
   searchConfig >>= \case
     Nothing   -> return $ Left (ConfigException "Config file not found")

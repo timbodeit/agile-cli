@@ -21,6 +21,9 @@ import           Text.RegexPR
 toMaybe :: Either e a -> Maybe a
 toMaybe = either (const Nothing) Just
 
+toEither :: b -> Maybe a -> Either b a
+toEither b = maybe (Left b) Right
+
 hoistEitherIO :: IO (Either e a) -> EitherT e IO a
 hoistEitherIO = hoistEither <=< liftIO
 

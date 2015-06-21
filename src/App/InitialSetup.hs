@@ -1,21 +1,28 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module App.InitialSetup where
+module App.InitialSetup ( doInitSetup
+                        , doSetupConfigFromScratch
+                        , doSetupFromExistingConfig
+                        , doSetupConfigInteractively
+                        , runWizard
+                        ) where
 
 import           App.Config
 import           App.Types
 import           App.Util
+import           Control.Monad.Trans.Either
 
 import           Control.Applicative
 import           Control.Lens
-import qualified Data.ByteString         as BS
-import qualified Data.ByteString.Lazy    as LBS
+import           Crypto.Types.PubKey.RSA    (PrivateKey (..))
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as LBS
 import           Data.List
 import           Data.String.Conversions
-import qualified Data.Text               as T
-import qualified Jira.API                as J
-import           Network.HTTP.Client     hiding (path)
+import qualified Data.Text                  as T
+import qualified Jira.API                   as J
+import           Network.HTTP.Client        hiding (path)
 import           System.Directory
 import           Web.Authenticate.OAuth
 
@@ -39,15 +46,18 @@ doSetupConfigFromScratch =
     dumpDefaultSettings = do
       writeConfigToLocalDir defaultConfig
       putStrLn $ "Config written to " ++ configFileName ++ "."
-      putStrLn $ "Adjust the config file to your needs and call 'agile init'" ++
+      putStrLn $ "Adjust the config file to your needs and call 'agile init' " ++
                  "again to initialize the JIRA authentication."
 
 runWizard :: IO ()
 runWizard = do
   config <- doSetupConfigInteractively
   writeConfigToLocalDir config
+
+  putStrLn ""
+  putStrLn "Checking your config..."
   doInitAuth config >>=
-    maybe handleAuthError writeConfigToLocalDir
+    either handleAppException writeConfigToLocalDir
 
 doSetupConfigInteractively :: IO Config
 doSetupConfigInteractively = do
@@ -96,7 +106,7 @@ doSetupFromExistingConfig (configPath, config) =
                               then drop 1 answers
                               else answers
        in runUserChoice question availableAnswers
-  else doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
+  else doInitAuth config >>= either handleAppException (writeConfigTo configPath)
   where
     question = unlines
       [ "Config file with authentication info found at " ++ configPath
@@ -109,23 +119,26 @@ doSetupFromExistingConfig (configPath, config) =
       ]
       [ copyFile configPath configFileName
       , runWizard
-      , doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
-
+      , doInitAuth config >>= either handleAppException (writeConfigTo configPath)
       ]
 
-doInitAuth :: Config -> IO (Maybe Config)
-doInitAuth config =
-  doGetAccessToken >$$< \(token, tokenSecret) ->
+doInitAuth :: Config -> AppIO Config
+doInitAuth config = runEitherT $ do
+  privateKey  <- hoistEitherIO . readPrivateKey $ config^.configJiraConfig.jiraOAuthSigningKeyPath
+  accessToken <- hoistEitherIO $ doGetAccessToken privateKey
+  return $ uncurry updateConfig accessToken
+  where
+    updateConfig :: BS.ByteString -> BS.ByteString -> Config
+    updateConfig token tokenSecret =
       config & configJiraConfig.jiraOAuthAccessToken  .~ cs token
              & configJiraConfig.jiraOAuthAccessSecret .~ cs tokenSecret
-  where
-    doGetAccessToken :: IO (Maybe (BS.ByteString, BS.ByteString))
-    doGetAccessToken = do
+
+    doGetAccessToken :: PrivateKey -> AppIO (BS.ByteString, BS.ByteString)
+    doGetAccessToken pk = do
       manager <- newManager defaultManagerSettings
-      pk <- J.readPemPrivateKey =<< readFile (config^.configJiraConfig.jiraOAuthSigningKeyPath)
       let oauth = J.getOAuth (config^.configJiraConfig.jiraBaseUrl)
-                           (config^.configJiraConfig.jiraOAuthConsumerKey)
-                           pk
+                  (config^.configJiraConfig.jiraOAuthConsumerKey)
+                  pk
       requestToken <- getTemporaryCredential oauth manager
       let authUrl = authorizeUrl oauth requestToken
       putStrLn "Please open the following link in your browser and log in."
@@ -134,13 +147,14 @@ doInitAuth config =
       print authUrl
       _ <- getChar
       accessToken <- getAccessToken oauth requestToken manager
-      return $ extractAccessToken accessToken
+      return $ toEither (ConfigException "Failed to extract access token")
+                        (extractAccessToken accessToken)
 
     extractAccessToken :: Credential -> Maybe (BS.ByteString, BS.ByteString)
     extractAccessToken credential =
       let tokenMap = unCredential credential
-          token =  view _2 <$> find (keyEquals "oauth_token") tokenMap
-          secret = view _2 <$> find (keyEquals "oauth_token_secret") tokenMap
+          token =  snd <$> find (keyEquals "oauth_token") tokenMap
+          secret = snd <$> find (keyEquals "oauth_token_secret") tokenMap
       in  (,) <$> token <*> secret
 
     keyEquals :: Eq a => a -> (a, b) -> Bool
@@ -157,5 +171,6 @@ writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
 writeConfigToLocalDir :: Config -> IO ()
 writeConfigToLocalDir = writeConfigTo configFileName
 
-handleAuthError :: IO ()
-handleAuthError = putStrLn "Authentication error. Please try again."
+handleAppException :: AppException -> IO ()
+handleAppException (ConfigException s) = putStrLn s
+handleAppException e = print e

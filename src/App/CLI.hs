@@ -30,6 +30,7 @@ import           Data.String.Conversions
 import           Jira.API                   hiding (getConfig, tryMaybe)
 import           Network.HTTP.Types.URI
 import           Options.Applicative
+import           System.Exit
 import           System.IO
 import           System.IO.Temp
 import           System.Process
@@ -44,7 +45,7 @@ execCLI =
 runCLI :: CLIOptions -> IO ()
 runCLI options = case options^.cliCommand of
   InitCommand ->
-    doInitSetup >> configTest
+    doInitSetup
   ConfigTestCommand ->
     configTest
   ShowIssueTypesCommand ->
@@ -172,10 +173,8 @@ finishIssueWithMerge issueKey = do
 
 configTest :: IO ()
 configTest = do
-  result <- runApp' . liftJira $ getRaw' "application-properties"
-  either handleError (const $ putStrLn "Config seems OK.") result
-  where
-    handleError e = putStrLn $ "Error while checking config:\n" ++ show e
+  run . liftJira $ getRaw' "application-properties"
+  putStrLn "Config seems OK."
 
 showIssueTypes :: IO ()
 showIssueTypes = run $ do
@@ -336,8 +335,8 @@ runApp' m = runEitherT $ do
 liftJira :: JiraM a -> AppM a
 liftJira m = do
   config <- getConfig
-  jiraConfig <- liftIO $ getJiraConfig config
-  result <- liftIO $ runJira jiraConfig m
+  jiraApiConfig <- liftEitherIO $ getJiraApiConfig config
+  result <- liftIO $ runJira jiraApiConfig m
   either (throwError . JiraApiException) return result
 
 liftGit :: Git.GitM a -> AppM a
@@ -346,24 +345,28 @@ liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
     convertException (Git.GitException s) = GitException s
 
 handleAppException :: AppException -> IO ()
-handleAppException (ConfigException s) =
-  putStrLn "Problem with config file:" >> putStrLn s
-handleAppException (AuthException s) =
-  putStrLn "Authentication Error:" >> putStrLn s
-handleAppException (GitException s) =
-  putStrLn "Git error:" >> putStrLn s
-handleAppException (UserInputException s) =
-  putStrLn s
-handleAppException (JiraApiException e) = case e of
-  JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
-  OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
-  GenericFailure           -> putStrLn "Fatal exception in JIRA API"
-  BadRequestException info -> do
-    putStrLn "Bad request to JIRA API:"
-    print info
+handleAppException exception = do
+  case exception of
+    IOException e ->
+      putStrLn "IOException:" >> putStrLn e
+    ConfigException s ->
+      putStrLn "Problem with config file:" >> putStrLn s
+    AuthException s ->
+      putStrLn "Authentication Error:" >> putStrLn s
+    GitException s ->
+      putStrLn "Git error:" >> putStrLn s
+    UserInputException s ->
+      putStrLn s
+    JiraApiException e -> case e of
+      JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
+      OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
+      GenericFailure           -> putStrLn "Fatal exception in JIRA API"
+      BadRequestException info -> do
+        putStrLn "Bad request to JIRA API:"
+        print info
+        -- Show available issue types if issuetype key is the the error map
+        when (hasErrorField "issuetype" info) showIssueTypes
 
-    -- Show available issue types if issuetype key is the the error map
-    when (hasErrorField "issuetype" info) showIssueTypes
+  exitWith $ ExitFailure 1
   where
     hasErrorField key (BadRequestInfo _ errorMap) = Map.member key errorMap
-
