@@ -358,4 +358,12 @@ handleAppException (JiraApiException e) = case e of
   JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
   OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
   GenericFailure           -> putStrLn "Fatal exception in JIRA API"
-  BadRequestException info -> putStrLn "Bad request to JIRA API:"        >> print info
+  BadRequestException info -> do
+    putStrLn "Bad request to JIRA API:"
+    print info
+
+    -- Show available issue types if issuetype key is the the error map
+    when (hasErrorField "issuetype" info) showIssueTypes
+  where
+    hasErrorField key (BadRequestInfo _ errorMap) = Map.member key errorMap
+
