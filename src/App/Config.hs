@@ -30,6 +30,7 @@ defaultJiraConfig = JiraConfig
   , _jiraUsername            = "myusername"
   , _jiraProject             = "MAP"
   , _jiraIssueTypeAliases    = defaultIssueTypeMap
+  , _jiraSearchAliases       = defaultSearchAliases
   , _jiraOAuthConsumerKey    = "agile-cli"
   , _jiraOAuthSigningKeyPath = "/path/to/key.pem"
   , _jiraOAuthAccessToken    = ""
@@ -60,7 +61,14 @@ defaultIssueTypeMap = Map.fromList
   , "t" ~> "Task"
   , "i" ~> "Improvement"
   ]
-  where (~>) = (,)
+
+defaultSearchAliases :: Map.Map String String
+defaultSearchAliases = Map.fromList
+  [ "open"       ~> "status = open"
+  , "unresolved" ~> "resolution = unresolved"
+  , "resolved"   ~> "status = resolved"
+  , "next"       ~> "status = open or status = reopened order by priority"
+  ]
 
 getJiraConfig :: Config -> IO J.JiraConfig
 getJiraConfig c = do
@@ -117,3 +125,7 @@ prettyEncodeConfig :: Config -> LBS.ByteString
 prettyEncodeConfig config =
   let prettyConfig = P.defConfig { P.confIndent = 2, P.confCompare = compare }
   in  P.encodePretty' prettyConfig config
+
+-- For easier to read maps
+(~>) :: a -> b -> (a, b)
+(~>) = (,)

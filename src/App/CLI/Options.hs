@@ -13,13 +13,18 @@ data FinishType = FinishWithPullRequest
                 | FinishWithMerge
                 deriving (Show, Eq)
 
+data SearchOptions = SearchOptions { searchOverAllProjects :: Bool
+                                   , searchOnlyUserIssues  :: Bool
+                                   , searchOnWebsite       :: Bool
+                                   } deriving (Show, Eq)
+
 data CLICommand = InitCommand
                 | ConfigTestCommand
                 | ShowIssueTypesCommand
                 | CleanupBranchesCommand
                 | ShowCommand (Maybe String)
                 | OpenCommand (Maybe String)
-                | SearchCommand String
+                | SearchCommand SearchOptions String
                 | NewCommand Bool String String
                 | StartCommand (Maybe String)
                 | StopCommand (Maybe String)
@@ -92,10 +97,27 @@ configTestCommandParser :: Parser CLICommand
 configTestCommandParser = pure ConfigTestCommand
 
 searchCommandParser :: Parser CLICommand
-searchCommandParser = SearchCommand <$> strArgument
-  ( metavar "JQL"
- <> help "Search query in JQL"
-  )
+searchCommandParser = SearchCommand
+  <$> searchOptionsParser
+  <*> (restArgs ( metavar "JQL"
+               <> help "Search query in JQL"
+                ) <|> pure ""
+      )
+  where
+    searchOptionsParser :: Parser SearchOptions
+    searchOptionsParser = SearchOptions
+      <$> switch ( short 'a'
+                <> long "all"
+                <> help "Whether to search over all projects"
+                 )
+      <*> switch ( short 'm'
+                <> long "my"
+                <> help "Whether to only search issues assigned to you"
+                 )
+      <*> switch ( short 'b'
+                <> long "browser"
+                <> help "Whether show search results in the browser"
+                 )
 
 newCommandParser :: Parser CLICommand
 newCommandParser = NewCommand
@@ -106,11 +128,9 @@ newCommandParser = NewCommand
   <*> strArgument ( metavar "ISSUETYPE"
                  <> help "Issue type (alias) - use the issuetypes command for available options"
                   )
-  <*> (unwords <$> some (strArgument ( metavar "SUMMARY"
-                                    <> help "Issue summary"
-                                     )
-                        )
-      )
+  <*> restArgs ( metavar "SUMMARY"
+              <> help "Issue summary"
+               )
 
 checkoutCommandParser :: Parser CLICommand
 checkoutCommandParser = CheckoutCommand <$> strArgument
@@ -139,3 +159,6 @@ issueArgParser = optional $ strArgument
 
 toParserInfo :: String -> Parser a -> ParserInfo a
 toParserInfo desc p = info (helper <*> p) (fullDesc <> progDesc desc)
+
+restArgs :: Mod ArgumentFields String -> Parser String
+restArgs opts = unwords <$> some (strArgument opts)

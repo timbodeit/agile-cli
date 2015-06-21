@@ -21,6 +21,7 @@ data JiraConfig = JiraConfig
   , _jiraUsername            :: String
   , _jiraProject             :: String
   , _jiraIssueTypeAliases    :: Map.Map String String
+  , _jiraSearchAliases       :: Map.Map String String
   , _jiraOAuthConsumerKey    :: String
   , _jiraOAuthSigningKeyPath :: String
   , _jiraOAuthAccessToken    :: String
