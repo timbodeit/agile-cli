@@ -132,32 +132,24 @@ finishIssueWithPullRequest issueKey = (,)
   <$> liftGit Git.branchStatus
   <*> liftGit Git.workingCopyStatus
   >>= \case
-    (NoUpstream, _    ) -> throwError $ UserInputException
+    (NoUpstream, _) -> throwError $ UserInputException
       "Your current branch has not been pushed! Cannot create pull request on remote server."
     (NewCommits, Clean) -> confirmFinish  $
-      unlines [ "You have new commits that haven't yet been pushed to the server."
-              , "Do you with to continue"
-              , "[y/n] "
+      unlines' [ "You have new commits that haven't yet been pushed to the server."
+              , "Do you wish to continue?"
               ]
     (NewCommits, Dirty) -> confirmFinish $
-      unlines [ "You have new commits and changes that haven't been comitted yet."
-              , "Do you with to continue"
-              , "[y/n] "
+      unlines' [ "You have new commits and changes that haven't been comitted yet."
+              , "Do you wish to continue?"
               ]
-    (        _ , Dirty) -> confirmFinish $
-      unlines [ "You have changes that haven't been comitted yet."
-              , "Do you with to continue"
-              , "[y/n] "
+    (_ , Dirty) -> confirmFinish $
+      unlines' [ "You have changes that haven't been comitted yet."
+              , "Do you wish to continue?"
               ]
     _           -> finishIssueWithPullRequest' issueKey
   where
-    confirmFinish message = do
-      liftIO (putStr message)
-      confirm' >>= bool (return ()) (finishIssueWithPullRequest' issueKey)
-    confirm' = liftIO getChar >>= \case
-      'y' -> return True
-      'n' -> return False
-      _ -> confirm'
+    confirmFinish message = liftIO (askYesNoWithDefault False message)
+                        >>= bool (return ()) (finishIssueWithPullRequest' issueKey)
 
 finishIssueWithPullRequest' :: IssueKey -> AppM ()
 finishIssueWithPullRequest' issueKey = do

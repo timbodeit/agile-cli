@@ -6,6 +6,7 @@ import           App.Types
 
 import           System.Process
 import           Control.Applicative
+import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
@@ -96,9 +97,26 @@ askWithDefault defaultAnswer question =
     "" -> defaultAnswer
     s  -> s
 
+askYesNoWithDefault :: Bool -> String -> IO Bool
+askYesNoWithDefault defaultAnswer question = do
+  let question' = question ++ " [" ++ showChoices ++ "]"
+  putStrLn question'
+  putStr' "> "
+  getChar' >>= \case
+    c | c `elem` "yY"   -> return True
+      | c `elem` "nN"   -> return False
+      | c `elem` "\n\r" -> return defaultAnswer
+      | otherwise -> putStrLn
+         ("Please answer with y or n or press enter for the default (" ++ showDefault ++ ")")
+         >> tryAgain
+  where
+    showChoices = if defaultAnswer then "Y/n" else "y/N"
+    showDefault = if defaultAnswer then "y" else "n"
+    tryAgain    = askYesNoWithDefault defaultAnswer question
+
 runUserChoice :: String -> [(String, IO a)] -> IO a
 runUserChoice question answers = do
-  let question' = unlines $ question : renderAnswers
+  let question' = unlines' $ question : renderAnswers
   readMaybe <$> ask question' >>= \case
     Nothing -> tryAgain
     Just i | i > 0 && i <= length answers -> snd (answers !! (i - 1))
@@ -115,6 +133,20 @@ putStr' s = putStr s >> hFlush stdout
 
 getLine' :: IO String
 getLine' = trim <$> getLine
+
+getChar' :: IO Char
+getChar' = do
+  savedBuffering <- hGetBuffering stdin
+  bracket_ (hSetBuffering stdin NoBuffering) (hSetBuffering stdin savedBuffering) $ do
+    c <- getChar
+    -- Continue writing to terminal on new line
+    putStrLn ""
+    return c
+
+-- Like unlines but without the final newline
+unlines' :: [String] -> String
+unlines' [] = ""
+unlines' l  = init (unlines l)
 
 -- Regular Expression
 
