@@ -30,6 +30,7 @@ import           Data.String.Conversions
 import           Jira.API                   hiding (getConfig, tryMaybe)
 import           Network.HTTP.Types.URI
 import           Options.Applicative
+import           System.Exit
 import           System.IO
 import           System.IO.Temp
 import           System.Process
@@ -355,24 +356,28 @@ liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
     convertException (Git.GitException s) = GitException s
 
 handleAppException :: AppException -> IO ()
-handleAppException (ConfigException s) =
-  putStrLn "Problem with config file:" >> putStrLn s
-handleAppException (AuthException s) =
-  putStrLn "Authentication Error:" >> putStrLn s
-handleAppException (GitException s) =
-  putStrLn "Git error:" >> putStrLn s
-handleAppException (UserInputException s) =
-  putStrLn s
-handleAppException (JiraApiException e) = case e of
-  JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
-  OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
-  GenericFailure           -> putStrLn "Fatal exception in JIRA API"
-  BadRequestException info -> do
-    putStrLn "Bad request to JIRA API:"
-    print info
+handleAppException exception = do
+  case exception of
+    IOException e ->
+      putStrLn "IOException:" >> putStrLn e
+    ConfigException s ->
+      putStrLn "Problem with config file:" >> putStrLn s
+    AuthException s ->
+      putStrLn "Authentication Error:" >> putStrLn s
+    GitException s ->
+      putStrLn "Git error:" >> putStrLn s
+    UserInputException s ->
+      putStrLn s
+    JiraApiException e -> case e of
+      JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
+      OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
+      GenericFailure           -> putStrLn "Fatal exception in JIRA API"
+      BadRequestException info -> do
+        putStrLn "Bad request to JIRA API:"
+        print info
+        -- Show available issue types if issuetype key is the the error map
+        when (hasErrorField "issuetype" info) showIssueTypes
 
-    -- Show available issue types if issuetype key is the the error map
-    when (hasErrorField "issuetype" info) showIssueTypes
+  exitWith $ ExitFailure 1
   where
     hasErrorField key (BadRequestInfo _ errorMap) = Map.member key errorMap
-
