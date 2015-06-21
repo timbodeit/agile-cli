@@ -44,7 +44,7 @@ execCLI =
 runCLI :: CLIOptions -> IO ()
 runCLI options = case options^.cliCommand of
   InitCommand ->
-    doInitSetup >> configTest
+    doInitSetup
   ConfigTestCommand ->
     configTest
   ShowIssueTypesCommand ->

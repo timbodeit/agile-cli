@@ -39,13 +39,16 @@ doSetupConfigFromScratch =
     dumpDefaultSettings = do
       writeConfigToLocalDir defaultConfig
       putStrLn $ "Config written to " ++ configFileName ++ "."
-      putStrLn $ "Adjust the config file to your needs and call 'agile init'" ++
+      putStrLn $ "Adjust the config file to your needs and call 'agile init' " ++
                  "again to initialize the JIRA authentication."
 
 runWizard :: IO ()
 runWizard = do
   config <- doSetupConfigInteractively
   writeConfigToLocalDir config
+
+  putStrLn ""
+  putStrLn "Checking your config..."
   doInitAuth config >>=
     maybe handleAuthError writeConfigToLocalDir
 
