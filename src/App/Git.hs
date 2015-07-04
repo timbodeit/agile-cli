@@ -22,6 +22,9 @@ import           Shelly                     hiding (find)
 type GitCommand = T.Text
 type GitOption  = T.Text
 
+class ToGitOption a where
+  toGitOption :: a -> GitOption
+
 newtype GitException = GitException String deriving Typeable
 
 instance Show GitException where
@@ -37,9 +40,24 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
                                  , MonadIO
                                  )
 
+data BranchStatus = UpToDate
+                  | NoUpstream
+                  | NewCommits
+                  deriving (Show, Eq)
 
-data BranchStatus = UpToDate | NoUpstream | NewCommits deriving ( Show, Eq )
-data WorkingCopyStatus = Clean | Dirty deriving ( Show, Eq )
+data WorkingCopyStatus = Clean
+                       | Dirty
+                       deriving (Show, Eq)
+
+data FastForwardOption = Default
+                       | OnlyFastForward
+                       | NonFastForward
+                       deriving (Show, Eq)
+
+instance ToGitOption FastForwardOption where
+  toGitOption Default         = "--ff"
+  toGitOption OnlyFastForward = "--ff-only"
+  toGitOption NonFastForward  = "--no-ff"
 
 runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
@@ -78,10 +96,10 @@ checkoutRemoteBranch branch =
   checkoutRemoteBranch' branch
   `orElse` withTempStash (checkoutRemoteBranch' branch)
 
-mergeBranch :: RefName -> RefName -> GitM ()
-mergeBranch (RefName source) target = void $ do
+mergeBranch :: FastForwardOption -> RefName -> RefName -> GitM ()
+mergeBranch ffOption (RefName source) target = void $ do
   checkoutBranch' target
-  git "merge" ["--no-ff", cs source]
+  git "merge" [toGitOption ffOption, cs source]
 
 checkoutBranch' :: RefName -> GitM ()
 checkoutBranch' (RefName branch) = void $

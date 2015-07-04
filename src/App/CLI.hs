@@ -120,7 +120,19 @@ searchIssues (SearchOptions allProjects onlyMyIssues inBrowser) search = do
 
 startIssue :: IssueKey -> AppM ()
 startIssue issueKey = do
+  gitFetch
   branch <- getOrCreateBranch issueKey
+
+  -- Try to fast-forward to current development.
+  -- This is useful if the branch was already merged.
+  config <- getConfig
+  let remoteDevelopmentBranch = RefName $ config^.configRemoteName
+                                       ++ "/"
+                                       ++ config^.configDevelopBranch
+  attempt . liftGit $ Git.mergeBranch Git.OnlyFastForward
+                                      remoteDevelopmentBranch
+                                      branch
+
   liftGit $ Git.checkoutBranch branch
   startProgress' issueKey
   where
@@ -161,7 +173,7 @@ finishIssueWithMerge issueKey = do
     liftJira $ closeIssue issueKey
     source <- branchForIssueKey issueKey
     target <- RefName . view configDevelopBranch <$> getConfig
-    liftGit $ Git.mergeBranch source target
+    liftGit $ Git.mergeBranch Git.NonFastForward source target
 
 configTest :: IO ()
 configTest = do
