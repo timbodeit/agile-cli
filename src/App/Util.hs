@@ -46,6 +46,9 @@ orThrowM m e = m >>= liftMaybe e
 orElse :: (MonadError e m) => m a -> m a -> m a
 orElse m d = m `catchError` const d
 
+attempt :: (Functor m, MonadError e m) => m a -> m ()
+attempt m = void m `orElse` return ()
+
 liftEither :: (MonadError e m) => Either e a -> m a
 liftEither = either throwError return
 
