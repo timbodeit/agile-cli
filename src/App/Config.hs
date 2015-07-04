@@ -76,15 +76,16 @@ defaultSearchAliases = Map.fromList
 -- errors are captured as AppExceptions in an either type.
 type AppIO a = IO (Either AppException a)
 
-getJiraApiConfig :: Config -> AppIO J.JiraConfig
-getJiraApiConfig config =
+getJiraApiConfig :: FilePath -> Config -> AppIO J.JiraConfig
+getJiraApiConfig configPath config =
   let jiraConfig    = config^.configJiraConfig
       authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
                                     pk
                                     (jiraConfig^.jiraOAuthAccessToken)
                                     (jiraConfig^.jiraOAuthAccessSecret)
+      keyPath       = takeDirectory configPath </> jiraConfig^.jiraOAuthSigningKeyPath
       jiraApiConfig = J.JiraConfig (jiraConfig^.jiraBaseUrl) . authConfig
-  in jiraApiConfig <$$> readPrivateKey (jiraConfig^.jiraOAuthSigningKeyPath)
+  in jiraApiConfig <$$> readPrivateKey keyPath
 
 readPrivateKey :: FilePath -> AppIO PrivateKey
 readPrivateKey path = tryWith toPrivateKeyException $
