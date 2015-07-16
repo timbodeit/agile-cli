@@ -9,6 +9,7 @@ module App.InitialSetup ( doInitSetup
                         ) where
 
 import           App.Config
+import           App.ConfigBuilder
 import           App.Types
 import           App.Util
 import           Control.Monad.Trans.Either
@@ -45,7 +46,7 @@ doSetupConfigFromScratch =
   where
     dumpDefaultSettings = do
       writeConfigToLocalDir defaultConfig
-      putStrLn $ "Config written to " ++ configFileName ++ "."
+      putStrLn $ "Config written to " ++ preferredConfigFileName ++ "."
       putStrLn $ "Adjust the config file to your needs and call 'agile init' " ++
                  "again to initialize the JIRA authentication."
 
@@ -102,7 +103,7 @@ doSetupConfigInteractively = do
 doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
 doSetupFromExistingConfig (configPath, config) =
   if isAuthConfigured config
-  then let availableAnswers = if configPath == configFileName
+  then let availableAnswers = if configPath == preferredConfigFileName
                               then drop 1 answers
                               else answers
        in runUserChoice question availableAnswers
@@ -117,7 +118,7 @@ doSetupFromExistingConfig (configPath, config) =
       , "Create a new config in the local directory using the wizard"
       , "Re-authenticate with JIRA"
       ]
-      [ copyFile configPath configFileName
+      [ copyFile configPath preferredConfigFileName
       , runWizard
       , doInitAuth config >>= either handleAppException (writeConfigTo configPath)
       ]
@@ -169,7 +170,7 @@ writeConfigTo :: FilePath -> Config -> IO ()
 writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
 
 writeConfigToLocalDir :: Config -> IO ()
-writeConfigToLocalDir = writeConfigTo configFileName
+writeConfigToLocalDir = writeConfigTo preferredConfigFileName
 
 handleAppException :: AppException -> IO ()
 handleAppException (ConfigException s) = putStrLn s

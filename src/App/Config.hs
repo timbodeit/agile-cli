@@ -3,26 +3,28 @@
 
 module App.Config where
 
+import           App.ConfigBuilder
 import           App.Types
 import           App.Util
 
+import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad.IO.Class
+import           Control.Monad.Except       hiding (forM_)
 import           Control.Monad.Trans.Either
 import           Crypto.Types.PubKey.RSA    (PrivateKey (..))
 import           Data.Aeson
 import qualified Data.Aeson.Encode.Pretty   as P
+import           Data.Aeson.Types
 import qualified Data.ByteString.Lazy       as LBS
 import           Data.Either.Combinators
+import           Data.Foldable
 import qualified Data.Map                   as Map
+import           Data.Maybe
 import           Data.String.Conversions
 import qualified Jira.API                   as J
 import           System.Directory
 import           System.FilePath
-
-configFileName :: FilePath
-configFileName = ".agile"
 
 defaultJiraConfig :: JiraConfig
 defaultJiraConfig = JiraConfig
@@ -45,15 +47,6 @@ defaultStashConfig = StashConfig
   , _stashReviewers  = []
   }
 
-defaultConfig :: Config
-defaultConfig = Config
-  { _configJiraConfig       = defaultJiraConfig
-  , _configStashConfig      = defaultStashConfig
-  , _configDevelopBranch    = "develop"
-  , _configRemoteName       = "origin"
-  , _configBrowserCommand   = "open"
-  }
-
 defaultIssueTypeMap :: Map.Map String String
 defaultIssueTypeMap = Map.fromList
   [ "b" ~> "Bug"
@@ -69,6 +62,37 @@ defaultSearchAliases = Map.fromList
   , "resolved"   ~> "status = resolved"
   , "next"       ~> "status = open or status = reopened order by priority"
   ]
+
+defaultConfig :: Config
+defaultConfig = Config
+  { _configJiraConfig       = defaultJiraConfig
+  , _configStashConfig      = defaultStashConfig
+  , _configDevelopBranch    = "develop"
+  , _configRemoteName       = "origin"
+  , _configBrowserCommand   = "open"
+  }
+
+emptyConfig :: Config
+emptyConfig = Config
+  { _configDevelopBranch    = ""
+  , _configRemoteName       = ""
+  , _configBrowserCommand   = ""
+  , _configJiraConfig       = JiraConfig { _jiraBaseUrl             = ""
+                                         , _jiraUsername            = ""
+                                         , _jiraProject             = ""
+                                         , _jiraIssueTypeAliases    = Map.empty
+                                         , _jiraSearchAliases       = Map.empty
+                                         , _jiraOAuthConsumerKey    = ""
+                                         , _jiraOAuthSigningKeyPath = ""
+                                         , _jiraOAuthAccessToken    = ""
+                                         , _jiraOAuthAccessSecret   = ""
+                                         }
+  , _configStashConfig      = StashConfig { _stashBaseUrl    = ""
+                                          , _stashProject    = ""
+                                          , _stashRepository = ""
+                                          , _stashReviewers  = []
+                                          }
+  }
 
 -- Config loading
 
@@ -100,49 +124,96 @@ readPrivateKey path = tryWith toPrivateKeyException $
       , show e
       ]
 
-readConfig :: FilePath -> AppIO Config
-readConfig path = runEitherT $ do
-  rawConfig <- hoistEitherIO $ readConfigFile path
-  hoistEither $ parseConfig rawConfig
-  where
-    readConfigFile :: FilePath -> AppIO String
-    readConfigFile = try . readFile
-
 readConfig' :: AppIO (FilePath, Config)
-readConfig' =
-  searchConfig >>= \case
-    Nothing   -> return $ Left (ConfigException "Config file not found")
-    Just path -> (path,) <$$> readConfig path
+readConfig' = runEitherT $
+      hoistEitherIO searchConfigParts
+  >$< map normalizeConfigPart
+  >$< mergeConfigParts
+  >>= \case
+    Nothing -> throwError notFoundException
+    Just (ConfigPart configPath partialConfig) ->
+      case missingKeys partialConfig of
+      []   -> do
+        config <- hoistEither $ fromPartialConfig partialConfig
+        return (configPath, config)
+      keys -> hoistEitherIO $ handleMissingKeys keys configPath partialConfig
+  where
+    missingKeys = missingConfigKeys referenceConfig
+    notFoundException =  ConfigException
+                         "No config file found. Please try the init command to get started."
+
+handleMissingKeys :: [ConfigKey] -> FilePath -> PartialConfig -> AppIO (FilePath, Config)
+handleMissingKeys keys configPath partialConfig = do
+  putStrLn "There are missing keys in your (combined) config file:"
+  forM_ keys $ \key -> putStrLn $ "- " ++ show key
+  askYesNoWithDefault True ("Fill default values to config at " ++ configPath ++ "?") >>= \case
+    False -> error "Please fix your config, then."
+    True  -> let completeConfig  = fillMissingConfigKeys partialConfig keys referenceConfig
+                 Right newConfig = fromPartialConfig completeConfig
+             in LBS.writeFile configPath (prettyEncodeConfig newConfig) >> readConfig'
 
 writeConfig :: Config -> AppM ()
 writeConfig config = do
   path <- getConfigPath
   liftIO $ LBS.writeFile path (prettyEncodeConfig config)
 
-searchConfig :: IO (Maybe FilePath)
-searchConfig = getCurrentDirectory >>= go
+searchConfigParts :: AppIO [ConfigPart]
+searchConfigParts = getCurrentDirectory >>= searchConfigParts'
   where
-    go :: FilePath -> IO (Maybe FilePath)
-    go dir = do
-      let path = joinPath [dir, configFileName]
-      exists <- doesFileExist path
-      if exists
-      then return $ Just path
-      else let parent = takeDirectory dir
-           in if parent == dir
-              then return Nothing
-              else go parent
+    searchConfigParts' dir = runEitherT $ do
+      let paths = map (\fn -> joinPath [dir, fn]) configFileNames
+      localConfigs <- forM paths $ \path -> do
+        config <- hoistEitherIO $ loadConfigFile path
+        return $ ConfigPart path <$> config
+      otherConfigs <- hoistEitherIO getOtherConfigs
+      return $ otherConfigs ++ catMaybes localConfigs
+      where
+        loadConfigFile :: FilePath -> AppIO (Maybe PartialConfig)
+        loadConfigFile path = runEitherT $
+          liftIO (doesFileExist path) >>= \case
+            False -> return Nothing
+            True  -> do
+              rawConfig     <- liftIO $ readFile path
+              partialConfig <- hoistEither $ parsePartialConfig rawConfig
+              return $ Just partialConfig
 
-parseConfig :: String -> Either AppException Config
-parseConfig = mapLeft convertException . eitherDecode . cs
+        getOtherConfigs :: AppIO [ConfigPart]
+        getOtherConfigs =
+          let parent = takeDirectory dir
+          in if parent == dir
+             then return (Right [])
+             else searchConfigParts' parent
+
+parsePartialConfig :: String -> Either AppException PartialConfig
+parsePartialConfig = mapLeft convertException . eitherDecode . cs
   where
     convertException msg = ConfigException $ "Parse error: " ++ msg
+
+fromPartialConfig :: PartialConfig -> Either AppException Config
+fromPartialConfig (PartialConfig o) = mapLeft ConfigException $ parseEither parseJSON o
+
+normalizeConfigPart :: ConfigPart -> ConfigPart
+normalizeConfigPart c@(ConfigPart path partialConfig) =
+  case readConfigKey keyPathConfigKey partialConfig of
+    Just (String keyPath) ->
+      if isAbsolute (cs keyPath)
+      then c
+      else let fullPath = joinPath [takeDirectory path, cs keyPath]
+               config'  = writeKeyPath fullPath
+           in ConfigPart path config'
+    _ -> c
+  where
+    writeKeyPath = writeConfigKey keyPathConfigKey partialConfig . String . cs
+    keyPathConfigKey = configKey "JiraConfig.OAuthSigningKeyPath"
 
 prettyEncodeConfig :: Config -> LBS.ByteString
 prettyEncodeConfig config =
   let prettyConfig = P.defConfig { P.confIndent = 2, P.confCompare = compare }
   in  P.encodePretty' prettyConfig config
 
--- For easier to read maps
+referenceConfig :: PartialConfig
+referenceConfig = PartialConfig $ toJSON emptyConfig
+
+-- For easier reading of maps
 (~>) :: a -> b -> (a, b)
 (~>) = (,)
