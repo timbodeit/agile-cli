@@ -131,7 +131,7 @@ readConfig' = runEitherT $
   >$< mergeConfigParts
   >>= \case
     Nothing -> throwError notFoundException
-    Just (ConfigPart configPath partialConfig) ->
+    Just (ConfigPart (ConfigPath configPath) partialConfig) ->
       case missingKeys partialConfig of
       []   -> do
         config <- hoistEither $ fromPartialConfig partialConfig
@@ -164,7 +164,7 @@ searchConfigParts = getCurrentDirectory >>= searchConfigParts'
       let paths = map (\fn -> joinPath [dir, fn]) configFileNames
       localConfigs <- forM paths $ \path -> do
         config <- hoistEitherIO $ loadConfigFile path
-        return $ ConfigPart path <$> config
+        return $ ConfigPart (ConfigPath path) <$> config
       otherConfigs <- hoistEitherIO getOtherConfigs
       return $ otherConfigs ++ catMaybes localConfigs
       where
@@ -193,14 +193,15 @@ fromPartialConfig :: PartialConfig -> Either AppException Config
 fromPartialConfig (PartialConfig o) = mapLeft ConfigException $ parseEither parseJSON o
 
 normalizeConfigPart :: ConfigPart -> ConfigPart
-normalizeConfigPart c@(ConfigPart path partialConfig) =
+normalizeConfigPart c@(ConfigPart configPath partialConfig) =
   case readConfigKey keyPathConfigKey partialConfig of
     Just (String keyPath) ->
       if isAbsolute (cs keyPath)
       then c
-      else let fullPath = joinPath [takeDirectory path, cs keyPath]
-               config'  = writeKeyPath fullPath
-           in ConfigPart path config'
+      else let configPathDir = takeDirectory $ unConfigPath configPath
+               fullPath      = joinPath [configPathDir, cs keyPath]
+               config'       = writeKeyPath fullPath
+           in ConfigPart configPath config'
     _ -> c
   where
     writeKeyPath = writeConfigKey keyPathConfigKey partialConfig . String . cs

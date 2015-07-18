@@ -18,6 +18,7 @@ import           Data.List.Split
 import           Data.Maybe
 import           Data.Ord
 import           Data.Semigroup
+import           Data.String
 import           Data.String.Conversions (cs)
 import qualified Data.Text               as T
 import           System.FilePath
@@ -49,19 +50,21 @@ instance Monoid PartialConfig where
   mempty = PartialConfig $ object []
   mappend = (<>)
 
-data ConfigPart = ConfigPart { configPartPath   :: FilePath
+newtype ConfigPath = ConfigPath { unConfigPath :: FilePath } deriving (Show, Eq, IsString)
+
+instance Ord ConfigPath where
+  -- Compare by path "deepness" and config file name priority
+  compare = comparing (length . splitPath . unConfigPath)
+         <> comparing (configNameRank . takeFileName . unConfigPath)
+    where
+      configNameRank n = fromMaybe (-1) . elemIndex n . reverse $ configFileNames
+
+data ConfigPart = ConfigPart { configPartPath   :: ConfigPath
                              , configPartConfig :: PartialConfig
                              } deriving (Show, Eq)
 
 instance Ord ConfigPart where
-  compare = comparing (length . splitPath . configPartPath) <> compareFileNames
-    where
-      compareFileNames (ConfigPart p1 _) (ConfigPart p2 _) =
-        let r1 = configNameRank $ takeFileName p1
-            r2 = configNameRank $ takeFileName p2
-        in r1 `compare` r2
-        where
-          configNameRank n = fromMaybe (-1) . elemIndex n . reverse $ configFileNames
+  compare = comparing configPartPath
 
 instance Semigroup ConfigPart where
   (ConfigPart p1 c1) <> (ConfigPart p2 c2) =
