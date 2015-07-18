@@ -6,6 +6,7 @@ module App.CLI (execCLI) where
 import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
+import           App.ConfigBuilder
 import           App.Git                    (BranchStatus (..),
                                              WorkingCopyStatus (..))
 import qualified App.Git                    as Git
@@ -176,9 +177,24 @@ finishIssueWithMerge issueKey = do
     liftGit $ Git.mergeBranch Git.NonFastForward source target
 
 configTest :: IO ()
-configTest = do
-  run . liftJira $ getRaw' "application-properties"
-  putStrLn "Config seems OK."
+configTest = runAppIO $ do
+  configParts <- hoistEitherIO searchConfigParts
+
+  liftIO $ do
+    putStrLn "> Using config files:"
+    mapM_ printConfigPath $ sort configParts
+    putStrLn ""
+    putStrLn "> Putting together config files..."
+
+  hoistEitherIO readConfig'
+
+  liftIO $ do
+    putStrLn "> Running JIRA test request..."
+    run . liftJira $ getRaw' "application-properties"
+    putStrLn "Config seems OK."
+  where
+    runAppIO = either handleAppException (const $ return ()) <=< runEitherT
+    printConfigPath = putStrLn . unConfigPath . configPartPath
 
 showIssueTypes :: IO ()
 showIssueTypes = run $ do
