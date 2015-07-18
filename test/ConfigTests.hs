@@ -41,8 +41,8 @@ tests =
     , testProperty
         "ConfigPart ordering"
         configPartOrdProp
-    , testCase "ConfigPart team file ordering" testConfigPartTeamOrdering
-    , testCase "ConfigPart file system ordering" testConfigPartHierarchyOrdering
+    , testCase "ConfigPath team file ordering" testConfigPathTeamOrdering
+    , testCase "ConfigPath file system ordering" testConfigPathHierarchyOrdering
     , testCase "ConfigPart merging order" testMoreImportantConfigWinsMerge
     , testCase "ConfigPart merging sample" testConfigPartMergingSample
 
@@ -123,15 +123,17 @@ configPartOrdProp =
   where
     randomConfigPath n = ConfigPath . joinPath . (++ [".agile"]) <$> replicateM n randomPathPart
 
-testConfigPartTeamOrdering :: Assertion
-testConfigPartTeamOrdering =
+testConfigPathTeamOrdering :: Assertion
+testConfigPathTeamOrdering =
   assertBool ".agile should be more important then .agile-team" $
-  ConfigPart ".agile" mempty > ConfigPart ".agile-team" mempty
+     ConfigPath ".agile" > ConfigPath ".agile-team"
+  && ConfigPath ".agile-team" > ConfigPath ".other-config"
+  && ConfigPath "/a/.agile-team" > ConfigPath "/.agile"
 
-testConfigPartHierarchyOrdering :: Assertion
-testConfigPartHierarchyOrdering =
+testConfigPathHierarchyOrdering :: Assertion
+testConfigPathHierarchyOrdering =
   assertBool "files in deeper directories are more important" $
-  ConfigPart "/quite/deep/.agile-team" mempty > ConfigPart "/shallow/.agile" mempty
+  ConfigPath "/quite/deep/.agile-team" > ConfigPath "/shallow/.agile"
 
 testMoreImportantConfigWinsMerge :: Assertion
 testMoreImportantConfigWinsMerge =
