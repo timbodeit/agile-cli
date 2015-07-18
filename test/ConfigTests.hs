@@ -10,9 +10,13 @@ import           Test.HUnit                           hiding (Test)
 import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
 
+import           App.Config                           (emptyConfig,
+                                                       fromPartialConfig)
 import           App.ConfigBuilder
+import           App.Types
 
 import           Control.Applicative
+import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
 import           Data.Semigroup
@@ -39,7 +43,8 @@ tests =
         configPartOrdProp
     , testCase "ConfigPart team file ordering" testConfigPartTeamOrdering
     , testCase "ConfigPart file system ordering" testConfigPartHierarchyOrdering
-    , testCase "ConfigPart merging" testMoreImportantConfigWinsMerge
+    , testCase "ConfigPart merging order" testMoreImportantConfigWinsMerge
+    , testCase "ConfigPart merging sample" testConfigPartMergingSample
 
     , testCase "mergeObjects (samples)" testMergeObjects
     , testProperty "mergeObjects (left neutrality)" mergeObjectsNeutralLeftProp
@@ -116,7 +121,7 @@ configPartOrdProp =
   path2 <- randomConfigPath b
   return $ ConfigPart path1 mempty `compare` ConfigPart path2 mempty == a `compare` b
   where
-    randomConfigPath n = joinPath . (++ [".agile"]) <$> replicateM n randomPathPart
+    randomConfigPath n = ConfigPath . joinPath . (++ [".agile"]) <$> replicateM n randomPathPart
 
 testConfigPartTeamOrdering :: Assertion
 testConfigPartTeamOrdering =
@@ -136,6 +141,38 @@ testMoreImportantConfigWinsMerge =
        Nothing -> assertFailure "Configs should be mergable"
        Just (ConfigPart _ (PartialConfig o)) ->
          object [("a", Bool False)] @=? o
+
+testConfigPartMergingSample :: Assertion
+testConfigPartMergingSample =
+  let baseConfigPart   = ConfigPart "/home/user/.agile" baseConfig
+      teamConfigPart   = ConfigPart "/home/user/project/.agile-team" teamConfig
+      myConfigPart     = ConfigPart "/home/user/project/.agile" myConfig
+      configParts      = [baseConfigPart, teamConfigPart, myConfigPart]
+      mergedConfigPart = mergeConfigParts configParts
+  in case mergedConfigPart of
+  Nothing ->
+    assertFailure "Could not merge config parts"
+  Just (ConfigPart path partialConfig) ->
+    case fromPartialConfig partialConfig of
+    Left _       -> assertFailure "Could not parse partial config"
+    Right config ->
+      assertBool "The merged config should match the sample" $
+         path == "/home/user/project/.agile"
+      && config^.configJiraConfig.jiraBaseUrl  == "http://jira.example.com"
+      && config^.configJiraConfig.jiraProject  == "MY"
+      && config^.configJiraConfig.jiraUsername == "myself"
+  where
+    baseConfig = PartialConfig (toJSON emptyConfig)
+    teamConfig = PartialConfig $ object [ "JiraConfig" ~> object
+                                          [ "BaseUrl"  ~> "http://jira.example.com"
+                                          , "Username" ~> "nobody"
+                                          ]
+                                        ]
+    myConfig   = PartialConfig $ object [ "JiraConfig" ~> object
+                                          [ "Project"   ~> "MY"
+                                          , "Username"  ~> "myself"
+                                          ]
+                                        ]
 
 -- Random Generation
 
@@ -175,8 +212,11 @@ instance Arbitrary Value where
 instance Arbitrary PartialConfig where
   arbitrary = PartialConfig <$> anyJsonObject
 
+instance Arbitrary ConfigPath where
+  arbitrary = ConfigPath <$> randomPath
+
 instance Arbitrary ConfigPart where
-  arbitrary = ConfigPart <$> randomPath <*> arbitrary
+  arbitrary = ConfigPart <$> arbitrary <*> arbitrary
 
 randomPath :: Gen FilePath
 randomPath = do
