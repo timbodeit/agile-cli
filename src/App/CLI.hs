@@ -124,7 +124,7 @@ startIssue issueKey = do
   gitFetch
   branch <- getOrCreateBranch issueKey
 
-  -- Try to fast-forward to current development.
+  -- Try to fast-forward to current development branch.
   -- This is useful if the branch was already merged.
   config <- getConfig
   let remoteDevelopmentBranch = RefName $ config^.configRemoteName
@@ -219,11 +219,17 @@ cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
       return $ issue^.iStatus == Closed
 
 checkoutBranchForIssueKey :: IssueKey -> AppM ()
-checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBranch
+checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBranch `orElse` createBranch
   where
     checkoutLocalBranch = do
       branch <- branchForIssueKey issueKey
       liftGit $ Git.checkoutBranch branch
+
+    createBranch =
+      liftIO (askYesNoWithDefault True "No local/remote branch found for this issue. Create new branch?") >>= \case
+        False -> return ()
+        True  -> createBranchForIssueKey issueKey >>= liftGit . Git.checkoutBranch
+
     fetchRemoteBranch = do
       gitFetch
       remoteName     <- view configRemoteName <$> getConfig
