@@ -171,10 +171,13 @@ finishIssueWithPullRequest' issueKey = do
 
 finishIssueWithMerge :: IssueKey -> AppM ()
 finishIssueWithMerge issueKey = do
-    liftJira $ closeIssue issueKey
-    source <- branchForIssueKey issueKey
-    target <- RefName . view configDevelopBranch <$> getConfig
-    liftGit $ Git.mergeBranch Git.NonFastForward source target
+  config <- getConfig
+  let transition = config^.configJiraConfig.jiraFinishMergeTransition
+  liftJira $ makeIssueTransition issueKey (TransitionName transition)
+
+  source <- branchForIssueKey issueKey
+  let target = RefName $ config^.configDevelopBranch
+  liftGit $ Git.mergeBranch Git.NonFastForward source target
 
 configTest :: IO ()
 configTest = runAppIO $ do

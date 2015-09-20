@@ -80,6 +80,7 @@ doSetupConfigInteractively = do
   let jiraConfig = JiraConfig jiraBaseUrl
                               jiraUsername
                               jiraProject
+                              "Close Issue" -- Finish with merge transition
                               defaultIssueTypeMap
                               defaultSearchAliases
                               jiraConsumerKey
