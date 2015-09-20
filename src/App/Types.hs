@@ -17,15 +17,16 @@ import           Data.Typeable
 import           Jira.API                   (JiraException (..))
 
 data JiraConfig = JiraConfig
-  { _jiraBaseUrl             :: String
-  , _jiraUsername            :: String
-  , _jiraProject             :: String
-  , _jiraIssueTypeAliases    :: Map.Map String String
-  , _jiraSearchAliases       :: Map.Map String String
-  , _jiraOAuthConsumerKey    :: String
-  , _jiraOAuthSigningKeyPath :: String
-  , _jiraOAuthAccessToken    :: String
-  , _jiraOAuthAccessSecret   :: String
+  { _jiraBaseUrl               :: String
+  , _jiraUsername              :: String
+  , _jiraProject               :: String
+  , _jiraFinishMergeTransition :: String
+  , _jiraIssueTypeAliases      :: Map.Map String String
+  , _jiraSearchAliases         :: Map.Map String String
+  , _jiraOAuthConsumerKey      :: String
+  , _jiraOAuthSigningKeyPath   :: String
+  , _jiraOAuthAccessToken      :: String
+  , _jiraOAuthAccessSecret     :: String
   } deriving (Show, Eq)
 
 makeLenses ''JiraConfig

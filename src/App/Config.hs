@@ -28,15 +28,16 @@ import           System.FilePath
 
 defaultJiraConfig :: JiraConfig
 defaultJiraConfig = JiraConfig
-  { _jiraBaseUrl             = "http://jira.example.com"
-  , _jiraUsername            = "myusername"
-  , _jiraProject             = "MAP"
-  , _jiraIssueTypeAliases    = defaultIssueTypeMap
-  , _jiraSearchAliases       = defaultSearchAliases
-  , _jiraOAuthConsumerKey    = "agile-cli"
-  , _jiraOAuthSigningKeyPath = "/path/to/key.pem"
-  , _jiraOAuthAccessToken    = ""
-  , _jiraOAuthAccessSecret   = ""
+  { _jiraBaseUrl               = "http://jira.example.com"
+  , _jiraUsername              = "myusername"
+  , _jiraProject               = "MAP"
+  , _jiraFinishMergeTransition = "close"
+  , _jiraIssueTypeAliases      = defaultIssueTypeMap
+  , _jiraSearchAliases         = defaultSearchAliases
+  , _jiraOAuthConsumerKey      = "agile-cli"
+  , _jiraOAuthSigningKeyPath   = "/path/to/key.pem"
+  , _jiraOAuthAccessToken      = ""
+  , _jiraOAuthAccessSecret     = ""
   }
 
 defaultStashConfig :: StashConfig
@@ -77,15 +78,16 @@ emptyConfig = Config
   { _configDevelopBranch    = ""
   , _configRemoteName       = ""
   , _configBrowserCommand   = ""
-  , _configJiraConfig       = JiraConfig { _jiraBaseUrl             = ""
-                                         , _jiraUsername            = ""
-                                         , _jiraProject             = ""
-                                         , _jiraIssueTypeAliases    = Map.empty
-                                         , _jiraSearchAliases       = Map.empty
-                                         , _jiraOAuthConsumerKey    = ""
-                                         , _jiraOAuthSigningKeyPath = ""
-                                         , _jiraOAuthAccessToken    = ""
-                                         , _jiraOAuthAccessSecret   = ""
+  , _configJiraConfig       = JiraConfig { _jiraBaseUrl               = ""
+                                         , _jiraUsername              = ""
+                                         , _jiraProject               = ""
+                                         , _jiraFinishMergeTransition = ""
+                                         , _jiraIssueTypeAliases      = Map.empty
+                                         , _jiraSearchAliases         = Map.empty
+                                         , _jiraOAuthConsumerKey      = ""
+                                         , _jiraOAuthSigningKeyPath   = ""
+                                         , _jiraOAuthAccessToken      = ""
+                                         , _jiraOAuthAccessSecret     = ""
                                          }
   , _configStashConfig      = StashConfig { _stashBaseUrl    = ""
                                           , _stashProject    = ""
