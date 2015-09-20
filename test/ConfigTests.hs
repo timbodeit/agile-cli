@@ -11,7 +11,8 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
 
 import           App.Config                           (emptyConfig,
-                                                       fromPartialConfig)
+                                                       fromPartialConfig,
+                                                       parsePartialConfig)
 import           App.ConfigBuilder
 import           App.Types
 
@@ -19,6 +20,7 @@ import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
+import           Data.List                            (isInfixOf)
 import           Data.Semigroup
 import           Data.String
 import qualified Data.Text                            as T
@@ -49,6 +51,8 @@ tests =
     , testCase "mergeObjects (samples)" testMergeObjects
     , testProperty "mergeObjects (left neutrality)" mergeObjectsNeutralLeftProp
     , testProperty "mergeObjects (right neutrality)" mergeObjectsNeutralRightProp
+
+    , testCase "broken JSON config" testBrokenJsonConfig
 
     , testCase "missingConfigKeys (samples)" testMissingConfigKeys
     , testProperty
@@ -175,6 +179,16 @@ testConfigPartMergingSample =
                                           , "Username"  ~> "myself"
                                           ]
                                         ]
+
+testBrokenJsonConfig :: Assertion
+testBrokenJsonConfig = case parsePartialConfig "(no file)" brokenJson of
+  Right _ -> assertFailure "Parse should have failed for broken JSON."
+  Left (ConfigException s) -> assertBool
+                              "Exception message should contain 'Error while parsing JSON'" $
+                              "Error while parsing JSON" `isInfixOf` s
+  Left _ -> assertFailure "Broken config JSON should result in a ConfigException."
+  where
+    brokenJson = "{\"foo\":\"bar\",[}"
 
 -- Random Generation
 
