@@ -174,7 +174,7 @@ searchConfigParts = getCurrentDirectory >>= searchConfigParts'
             False -> return Nothing
             True  -> do
               rawConfig     <- liftIO $ readFile path
-              partialConfig <- hoistEither $ parsePartialConfig rawConfig
+              partialConfig <- hoistEither $ parsePartialConfig path rawConfig
               return $ Just partialConfig
 
         getOtherConfigs :: AppIO [ConfigPart]
@@ -184,10 +184,13 @@ searchConfigParts = getCurrentDirectory >>= searchConfigParts'
              then return (Right [])
              else searchConfigParts' parent
 
-parsePartialConfig :: String -> Either AppException PartialConfig
-parsePartialConfig = mapLeft convertException . eitherDecode . cs
+parsePartialConfig :: FilePath -> String -> Either AppException PartialConfig
+parsePartialConfig path = mapLeft convertException . eitherDecode . cs
   where
-    convertException msg = ConfigException $ "Parse error: " ++ msg
+    convertException msg = ConfigException $ unlines
+        [ "Error while parsing JSON in config file at: " ++ path ++ ":"
+        , msg
+        ]
 
 fromPartialConfig :: PartialConfig -> Either AppException Config
 fromPartialConfig (PartialConfig o) = mapLeft ConfigException $ parseEither parseJSON o
