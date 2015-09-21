@@ -8,3 +8,5 @@ docsets/
 .stack-work/
 ghc-mod.cradle
 tmux.json
+.agile
+stack.yaml
