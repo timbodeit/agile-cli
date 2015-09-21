@@ -128,7 +128,7 @@ readPrivateKey path = tryWith toPrivateKeyException $
 
 readConfig' :: AppIO (FilePath, Config)
 readConfig' = runEitherT $
-      hoistEitherIO searchConfigParts
+      EitherT searchConfigParts
   >$< map normalizeConfigPart
   >$< mergeConfigParts
   >>= \case
@@ -138,7 +138,7 @@ readConfig' = runEitherT $
       []   -> do
         config <- hoistEither $ fromPartialConfig partialConfig
         return (configPath, config)
-      keys -> hoistEitherIO $ handleMissingKeys keys configPath partialConfig
+      keys -> EitherT $ handleMissingKeys keys configPath partialConfig
   where
     missingKeys = missingConfigKeys referenceConfig
     notFoundException =  ConfigException
@@ -165,9 +165,9 @@ searchConfigParts = getCurrentDirectory >>= searchConfigParts'
     searchConfigParts' dir = runEitherT $ do
       let paths = map (\fn -> joinPath [dir, fn]) configFileNames
       localConfigs <- forM paths $ \path -> do
-        config <- hoistEitherIO $ loadConfigFile path
+        config <- EitherT $ loadConfigFile path
         return $ ConfigPart (ConfigPath path) <$> config
-      otherConfigs <- hoistEitherIO getOtherConfigs
+      otherConfigs <- EitherT getOtherConfigs
       return $ otherConfigs ++ catMaybes localConfigs
       where
         loadConfigFile :: FilePath -> AppIO (Maybe PartialConfig)

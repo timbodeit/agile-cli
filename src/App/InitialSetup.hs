@@ -126,8 +126,8 @@ doSetupFromExistingConfig (configPath, config) =
 
 doInitAuth :: Config -> AppIO Config
 doInitAuth config = runEitherT $ do
-  privateKey  <- hoistEitherIO . readPrivateKey $ config^.configJiraConfig.jiraOAuthSigningKeyPath
-  accessToken <- hoistEitherIO $ doGetAccessToken privateKey
+  privateKey  <- EitherT . readPrivateKey $ config^.configJiraConfig.jiraOAuthSigningKeyPath
+  accessToken <- EitherT $ doGetAccessToken privateKey
   return $ uncurry updateConfig accessToken
   where
     updateConfig :: BS.ByteString -> BS.ByteString -> Config

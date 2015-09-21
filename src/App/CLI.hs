@@ -181,7 +181,7 @@ finishIssueWithMerge issueKey = do
 
 configTest :: IO ()
 configTest = runAppIO $ do
-  configParts <- hoistEitherIO searchConfigParts
+  configParts <- EitherT searchConfigParts
 
   liftIO $ do
     putStrLn "> Using config files:"
@@ -189,7 +189,7 @@ configTest = runAppIO $ do
     putStrLn ""
     putStrLn "> Putting together config files..."
 
-  hoistEitherIO readConfig'
+  EitherT readConfig'
 
   liftIO $ do
     putStrLn "> Running JIRA test request..."
@@ -358,8 +358,8 @@ run m = runApp' m >>= either handleAppException (const $ return ())
 
 runApp' :: AppM a -> IO (Either AppException a)
 runApp' m = runEitherT $ do
-  (configPath, config) <- hoistEitherIO readConfig'
-  hoistEitherIO $ runApp configPath config m
+  (configPath, config) <- EitherT readConfig'
+  EitherT $ runApp configPath config m
 
 liftJira :: JiraM a -> AppM a
 liftJira m = do
