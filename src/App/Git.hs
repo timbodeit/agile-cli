@@ -10,14 +10,20 @@ import           App.Util
 
 import           Control.Applicative
 import           Control.Exception
+import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
+import           Control.Monad.Trans.Maybe
 import           Data.Git
 import           Data.Git.Revision
+import           Data.List                  (find, isInfixOf)
+import           Data.String
 import           Data.String.Conversions
 import qualified Data.Text                  as T
 import           Data.Typeable
+import           Jira.API                   (IssueKey)
 import           Shelly                     hiding (find)
+import           Text.RegexPR
 
 type GitCommand = T.Text
 type GitOption  = T.Text
@@ -65,14 +71,50 @@ runGit = runEitherT . unGitM
 fetch :: String -> GitM ()
 fetch remote = void $ git "fetch" [cs remote]
 
-branchStatus :: GitM BranchStatus
-branchStatus = do
-  local     <- git "rev-parse" ["HEAD"]
-  mUpstream <- git "rev-parse" ["HEAD@{u}"] >>> tryMaybe
-  return $ case mUpstream of
-    Nothing                           -> NoUpstream
-    Just upstream | upstream == local -> UpToDate
-                  | otherwise         -> NewCommits
+branchStatus :: String -> IssueKey -> GitM BranchStatus
+branchStatus remote issueKey = do
+  localBranch  <- getCurrentBranch'
+  localRev     <- getRev "HEAD"
+
+  validTrackingBranch <||> validRemoteBranch localBranch localRev >>= \case
+    Nothing -> return NoUpstream
+    Just remoteBranch ->
+      getBranchRev remoteBranch >>> tryMaybe >$< \case
+        Nothing -> NoUpstream
+        Just remoteRev | remoteRev == localRev -> UpToDate
+                       | otherwise             -> NewCommits
+  where
+    validTrackingBranch = runMaybeT $ do
+      trackingBranch  <- MaybeT getCurrentTrackingBranch
+      (remote', name) <- hoistMaybe $ splitBranch trackingBranch
+      guard $ remote == remote'
+      guard $ containsIssueKey name
+      return trackingBranch
+
+    validRemoteBranch (RefName branchName) localRev = do
+      remoteBranches <- filter (withRemoteName (== remote)) <$> getRemoteBranches
+      upToDateRemoteBranches <- filterM pointsToSameAsLocal remoteBranches
+
+      return $ find (withBranchName (== branchName))  upToDateRemoteBranches
+           <|> find (withBranchName containsIssueKey) upToDateRemoteBranches
+           <|> find (withBranchName (== branchName))  remoteBranches
+           <|> find (withBranchName containsIssueKey) remoteBranches
+      where
+        pointsToSameAsLocal branch = do
+          rev <- getBranchRev branch
+          return $ rev == localRev
+        withRemoteName f = maybe False (f . fst) . splitBranch
+        withBranchName f = maybe False (f . snd) . splitBranch
+
+    splitBranch :: RefName -> Maybe (String, String)
+    splitBranch (RefName branch) = do
+      match <- snd <$> matchRegexPR "^(.+?)/(.+)$" branch
+      remotePart <- lookup 1 match
+      namePart   <- lookup 2 match
+      return (remotePart, namePart)
+
+    containsIssueKey = isInfixOf (show issueKey)
+    (<||>)  = liftM2 (<|>)
 
 workingCopyStatus :: GitM WorkingCopyStatus
 workingCopyStatus = do
@@ -137,6 +179,19 @@ getCurrentBranch =
   >$< \case
     "HEAD"     -> Nothing
     branchName -> Just $ RefName branchName
+
+getCurrentBranch' :: GitM RefName
+getCurrentBranch' = liftMaybe (GitException "Cannot get current branch") =<< getCurrentBranch
+
+getCurrentTrackingBranch :: GitM (Maybe RefName)
+getCurrentTrackingBranch = tryMaybe $ RefName . trim . cs
+                       <$> git "rev-parse" ["--abbrev-ref", "HEAD@{u}"]
+
+getBranchRev :: RefName -> GitM String
+getBranchRev (RefName branch) = getRev branch
+
+getRev :: String -> GitM String
+getRev ref = trim . cs <$> git "rev-parse" [cs ref]
 
 branchesFromOutput :: T.Text -> [RefName]
 branchesFromOutput = map (RefName . parse) . lines . cs
