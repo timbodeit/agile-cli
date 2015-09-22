@@ -83,11 +83,14 @@ test-suite tests
                    , agile-cli
                    , base >=4.7 && <4.9
                    , checkers
+                   , directory
                    , filepath
                    , jira-api
                    , lens
                    , parsec
                    , semigroups
+                   , shelly
+                   , temporary
                    , test-framework
                    , test-framework-hunit
                    , test-framework-quickcheck2

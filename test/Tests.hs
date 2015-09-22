@@ -1,6 +1,7 @@
+import qualified ConfigTests
+import qualified IntegrationTests
 import qualified ParserTests
 import qualified UtilTests
-import qualified ConfigTests
 
 import           Test.Framework
 
@@ -12,3 +13,4 @@ tests =
      UtilTests.tests
   ++ ParserTests.tests
   ++ ConfigTests.tests
+  ++ IntegrationTests.tests
