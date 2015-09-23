@@ -77,27 +77,25 @@ doSetupConfigInteractively = do
   remoteName        <- askWithDefault "origin"  "Name of the remote?"
   openCommand       <- askWithDefault "open"    "Command to open URLs? (e.g. open on OS X)"
 
-  let jiraConfig = JiraConfig jiraBaseUrl
-                              jiraUsername
-                              jiraProject
-                              "Close Issue" -- Finish with merge transition
-                              defaultIssueTypeMap
-                              defaultSearchAliases
-                              jiraConsumerKey
-                              jiraSigningKey
-                              "" -- Access Token (unknown yet)
-                              "" -- Access Token Secret (unknown yet)
+  let jiraConfig = defaultJiraConfig { _jiraBaseUrl             = jiraBaseUrl
+                                     , _jiraUsername            = jiraUsername
+                                     , _jiraProject             = jiraProject
+                                     , _jiraOAuthConsumerKey    = jiraConsumerKey
+                                     , _jiraOAuthSigningKeyPath = jiraSigningKey
+                                     }
 
-  let stashConfig = StashConfig stashBaseUrl
-                                stashProject
-                                stashRepo
-                                stashReviewers
+  let stashConfig = defaultStashConfig { _stashBaseUrl    = stashBaseUrl
+                                       , _stashProject    = stashProject
+                                       , _stashRepository = stashRepo
+                                       , _stashReviewers  = stashReviewers
+                                       }
 
-  return $ Config jiraConfig
-                  stashConfig
-                  developBranch
-                  remoteName
-                  openCommand
+  return $ defaultConfig { _configJiraConfig     = jiraConfig
+                         , _configStashConfig    = stashConfig
+                         , _configDevelopBranch  = developBranch
+                         , _configRemoteName     = remoteName
+                         , _configBrowserCommand = openCommand
+                         }
   where
     parseCommaList = map (trim . cs) . T.splitOn "," . cs
 
