@@ -124,8 +124,8 @@ missingConfigKeys (PartialConfig a) (PartialConfig b) = go a b []
       where
         toConfigKey = ConfigKey . NE.fromList . (path ++) . pure . cs
 
-fillMissingConfigKeys :: PartialConfig -> [ConfigKey] -> PartialConfig -> PartialConfig
-fillMissingConfigKeys config keys referenceConfig = foldr fillKey config keys
+fillMissingConfigKeys :: PartialConfig -> PartialConfig -> [ConfigKey] -> PartialConfig
+fillMissingConfigKeys referenceConfig = foldr fillKey
   where
     fillKey :: ConfigKey -> PartialConfig -> PartialConfig
     fillKey key config = case readConfigKey key referenceConfig of
