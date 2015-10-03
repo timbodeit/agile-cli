@@ -17,6 +17,7 @@ import           Control.Monad.Trans.Maybe
 import           Data.Git
 import           Data.Git.Revision
 import           Data.List                  (find, isInfixOf)
+import           Data.Maybe                 (mapMaybe)
 import           Data.String
 import           Data.String.Conversions
 import qualified Data.Text                  as T
@@ -194,8 +195,11 @@ getRev :: String -> GitM String
 getRev ref = trim . cs <$> git "rev-parse" [cs ref]
 
 branchesFromOutput :: T.Text -> [RefName]
-branchesFromOutput = map (RefName . parse) . lines . cs
-  where parse = trim . drop 2
+branchesFromOutput = mapMaybe (fmap RefName . parse) . lines . cs
+  where
+    parse = head' . words . trim . drop 2
+    head' []    = Nothing
+    head' (x:_) = Just x
 
 withTempStash :: GitM a -> GitM a
 withTempStash m = do
