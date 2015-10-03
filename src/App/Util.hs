@@ -10,7 +10,6 @@ import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Maybe
 import           Data.Char
 import           GHC.IO.Handle
@@ -75,6 +74,13 @@ liftEitherM = (>>= either throwError return)
 
 (<$<) :: Functor f => (a -> b) -> (c -> f a) -> c -> f b
 (<$<) f g = (f <$>) . g
+
+(<||>) :: (Alternative a, Monad m, Eq (a b)) => m (a b) -> m (a b) -> m (a b)
+ma <||> mb = do
+  a <- ma
+  if a == empty
+  then mb
+  else ma
 
 -- String handling
 
