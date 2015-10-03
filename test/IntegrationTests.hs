@@ -83,7 +83,7 @@ branchStatusTests = withGitTestEnvironment $ \dir -> do
   localShelly $ run "git" ["push", fromString remote]
   assertCurrentBranchStatus UpToDate
   where
-    assertCurrentBranchStatus expected = runGit (branchStatus remote issueKey) >>= \case
+    assertCurrentBranchStatus expected = runGit (branchStatus (RemoteName remote) issueKey) >>= \case
       Left e       -> assertFailure $ "Branch status should succeed. Failure is: " ++ show e
       Right status -> assertBranchStatus expected status
     assertBranchStatus = assertEqual "Unexpected branch status"

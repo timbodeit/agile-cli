@@ -1,18 +1,18 @@
 module App.Stash where
 
+import           App.Git
 import           App.Types
 import           App.Util
 
 import           Control.Applicative
 import           Control.Lens
-import           Data.Git
 import           Data.List
 
-openPullRequest :: RefName -> RefName -> AppM ()
+openPullRequest :: BranchName -> BranchName -> AppM ()
 openPullRequest source target = openInBrowser =<< pullRequestUrl source target
 
-pullRequestUrl :: RefName -> RefName -> AppM String
-pullRequestUrl (RefName source) (RefName target) = do
+pullRequestUrl :: BranchName -> BranchName -> AppM String
+pullRequestUrl (BranchName source) (BranchName target) = do
   stashConfig <- view configStashConfig <$> getConfig
   return $ stashConfig^.stashBaseUrl
         ++ "/projects/" ++ stashConfig^.stashProject

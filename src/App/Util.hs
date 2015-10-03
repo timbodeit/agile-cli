@@ -63,18 +63,23 @@ liftEitherM = (>>= either throwError return)
 (>>>) :: a -> (a -> b) -> b
 (>>>) = flip ($)
 
+infixl 4 <$$>
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
 
+infixr 4 >$<
 (>$<) :: Functor f => f a -> (a -> b) -> f b
 (>$<) = flip fmap
 
+infixr 4 >$$<
 (>$$<) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
 (>$$<) = flip (fmap . fmap)
 
+infixr 4 <$<
 (<$<) :: Functor f => (a -> b) -> (c -> f a) -> c -> f b
 (<$<) f g = (f <$>) . g
 
+infixl 3 <||>
 (<||>) :: (Alternative a, Monad m, Eq (a b)) => m (a b) -> m (a b) -> m (a b)
 ma <||> mb = do
   a <- ma

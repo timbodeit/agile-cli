@@ -1,6 +1,7 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings         #-}
 
 module App.CLI (execCLI) where
 
@@ -8,8 +9,10 @@ import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
 import           App.ConfigBuilder
-import           App.Git                    (BranchStatus (..),
-                                             WorkingCopyStatus (..))
+import           App.Git                    (BranchName (..), BranchStatus (..),
+                                             IsBranchName, RemoteBranchName,
+                                             WorkingCopyStatus (..),
+                                             toBranchString, (</>))
 import qualified App.Git                    as Git
 import           App.InitialSetup
 import           App.Stash
@@ -25,7 +28,6 @@ import           Control.Monad.Trans.Either
 import           Data.Bool
 import           Data.Char
 import           Data.Either.Combinators
-import           Data.Git
 import           Data.List
 import qualified Data.Map                   as Map
 import           Data.String.Conversions
@@ -128,11 +130,9 @@ startIssue issueKey = do
   -- Try to fast-forward to current development branch.
   -- This is useful if the branch was already merged.
   config <- getConfig
-  let remoteDevelopmentBranch = RefName $ config^.configRemoteName
-                                       ++ "/"
-                                       ++ config^.configDevelopBranch
+  remoteBranch <- liftGit $ remoteDevelopBranch config
   attempt . liftGit $ Git.mergeBranch Git.OnlyFastForward
-                                      remoteDevelopmentBranch
+                                      remoteBranch
                                       branch
 
   liftGit $ Git.checkoutBranch branch
@@ -144,7 +144,7 @@ startIssue issueKey = do
 finishIssueWithPullRequest :: IssueKey -> AppM ()
 finishIssueWithPullRequest issueKey = do
   gitFetch
-  remote <- view configRemoteName <$> getConfig
+  remote <- view configRemote <$> getConfig
   (,) <$> liftGit (Git.branchStatus remote issueKey)
       <*> liftGit Git.workingCopyStatus
   >>= \case
@@ -179,7 +179,7 @@ finishIssueWithMerge issueKey = do
   liftJira $ makeIssueTransition issueKey (TransitionName transition)
 
   source <- branchForIssueKey issueKey
-  let target = RefName $ config^.configDevelopBranch
+  target <- liftGit $ config^.localDevelopBranch
   liftGit $ Git.mergeBranch Git.NonFastForward source target
 
 configTest :: IO ()
@@ -215,7 +215,7 @@ cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
                          >>= filterM isClosed
                          >>= mapM (liftGit . Git.removeBranch)
   where
-    isClosed (RefName branch) = onError (return False) $ do
+    isClosed branch = onError (return False) $ do
       issueKey <- extractIssueKey branch
                   `orThrow` GitException "" -- meaningless, as it is catched above
       issue <- liftJira $ getIssue issueKey
@@ -242,11 +242,11 @@ checkoutBranchForIssueKey issueKey = checkoutLocalBranch `orElse` fetchRemoteBra
                         `orThrow` branchNotFoundException
       liftGit $ Git.checkoutRemoteBranch remoteBranch
         where
-          matchesRemote remoteName (RefName s) = (remoteName ++ "/") `isPrefixOf` s
+          matchesRemote remote = isPrefixOf (remote ++ "/") . show . Git.remoteName
           branchNotFoundException = UserInputException $
                                     "Branch for issue not found: " ++ show issueKey
 
-createBranchForIssueKey :: IssueKey -> AppM RefName
+createBranchForIssueKey :: IssueKey -> AppM BranchName
 createBranchForIssueKey issueKey = withAsyncGitFetch $ \asyncFetch -> do
   issue <- liftJira $ getIssue issueKey
   let issueTypeName = issue^.iType.itName
@@ -255,14 +255,17 @@ createBranchForIssueKey issueKey = withAsyncGitFetch $ \asyncFetch -> do
                    <$> askWithDefault (issue^.iSummary.to generateName)
                        "Short description for branch?"
   config <- getConfig
-  let baseBranchName = config^.configRemoteName ++ "/" ++ config^.configDevelopBranch
+  let remote = config^.configRemote
+  devBranch <- liftGit $ config^.configDevelopBranch.to Git.parseBranchName'
+  let baseBranchName = remote </> devBranch
+
   let branchPrefix = config^.configBranchPrefixMap.at issueTypeName.non (config^.configDefaultBranchPrefix)
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
-      branchName = branchPrefix ++ branchSuffix
+  branchName <- liftGit . Git.parseBranchName' $ branchPrefix ++ branchSuffix
 
   liftIO $ wait asyncFetch
-  liftGit $ Git.newBranch branchName baseBranchName
-  return $ RefName branchName
+  liftGit $ Git.newBranch branchName (Just baseBranchName)
+  return branchName
   where
     toBranchName = map (\c -> if isSpace c then '-' else c)
     generateName = toBranchName . map toLower . take 30
@@ -275,9 +278,10 @@ createIssue' issueType summary = do
 
 openPullRequest' :: IssueKey -> AppM ()
 openPullRequest' issueKey = do
+  config <- getConfig
   source <- branchForIssueKey issueKey
-  target <- view configDevelopBranch <$> getConfig
-  openPullRequest source (RefName target)
+  target <- liftGit $ config^. localDevelopBranch
+  openPullRequest source target
 
 issueBrowserUrl :: IssueKey -> AppM String
 issueBrowserUrl issue = do
@@ -316,20 +320,20 @@ parseSearch s = do
 
 currentIssueKey :: AppM IssueKey
 currentIssueKey = do
-  (RefName branchName) <- liftGit Git.getCurrentBranch `orThrowM` branchException
-  extractIssueKey branchName `orThrow` parseException
+  branch <- liftGit Git.getCurrentBranch `orThrowM` branchException
+  extractIssueKey branch `orThrow` parseException
   where
     branchException = UserInputException "You are not on a branch"
     parseException  = UserInputException "Can't parse issue from current branch"
 
-extractIssueKey :: String -> Maybe IssueKey
-extractIssueKey s = do
-  groups <- snd <$> matchRegexPR "/(\\w+)-(\\d+)" s
+extractIssueKey :: IsBranchName b => b -> Maybe IssueKey
+extractIssueKey branch = do
+  groups <- snd <$> matchRegexPR "/(\\w+)-(\\d+)" (toBranchString branch)
   key    <- lookup 1 groups
   n      <- lookup 2 groups >>= readMaybe
   return $ IssueKey key (IssueNumber n)
 
-branchForIssueKey :: IssueKey -> AppM RefName
+branchForIssueKey :: IssueKey -> AppM BranchName
 branchForIssueKey issueKey = do
   branches <- liftGit Git.getLocalBranches
   find (matchesIssueKey issueKey) branches `orThrow` branchException
@@ -350,8 +354,8 @@ withIssueKey (Just issueKey) = (=<< parseIssueKey issueKey)
 withIssue :: Maybe String -> (Issue -> AppM a) -> AppM a
 withIssue s f = withIssueKey s (f <=< liftJira . getIssue)
 
-matchesIssueKey :: IssueKey -> RefName -> Bool
-matchesIssueKey issueKey (RefName s) = show issueKey `isInfixOf` s
+matchesIssueKey :: IsBranchName b => IssueKey -> b -> Bool
+matchesIssueKey issueKey branch = show issueKey `isInfixOf` toBranchString branch
 
 -- App Monad
 
@@ -402,3 +406,14 @@ handleAppException exception = do
   exitWith $ ExitFailure 1
   where
     hasErrorField key (BadRequestInfo _ errorMap) = Map.member key errorMap
+
+configRemote :: Getter Config Git.RemoteName
+configRemote = configRemoteName.to Git.RemoteName
+
+localDevelopBranch :: IsBranchName b => Getter Config (Git.GitM b)
+localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
+
+remoteDevelopBranch :: Config -> Git.GitM RemoteBranchName
+remoteDevelopBranch config = do
+  devBranch <- view localDevelopBranch config
+  return $ (config^.configRemote) </> devBranch

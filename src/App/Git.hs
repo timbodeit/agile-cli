@@ -10,13 +10,12 @@ import           App.Util
 
 import           Control.Applicative
 import           Control.Exception
-import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Maybe
+import           Data.Char
 import           Data.Git
-import           Data.Git.Revision
-import           Data.List                  (find, isInfixOf)
+import           Data.List                  (find, isInfixOf, isSuffixOf)
 import           Data.Maybe                 (mapMaybe)
 import           Data.String
 import           Data.String.Conversions
@@ -47,6 +46,46 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
                                  , MonadIO
                                  )
 
+newtype BranchName = BranchName String deriving (Eq, Show, IsString)
+newtype RemoteName = RemoteName String deriving (Eq, IsString)
+
+instance Show RemoteName where
+  show (RemoteName n) = n
+
+data RemoteBranchName = RemoteBranchName { remoteName :: RemoteName
+                                         , branchName :: BranchName
+                                         } deriving (Eq, Show)
+
+class IsBranchName a where
+  parseBranchName    :: String -> Maybe a
+  toBranchString :: a -> String
+
+instance IsBranchName BranchName where
+  parseBranchName s = do
+    exitIf null
+    mapM_ (exitIf . elem) forbiddenChars
+    exitIf $ isInfixOf ".."
+    exitIf $ isSuffixOf ".lock"
+    exitIf $ isSuffixOf "/"
+    return $ BranchName trimmed
+    where
+      trimmed = trim s
+      exitIf f = guard . not $ f trimmed
+      forbiddenChars = asciiControlChars ++ "~^: \\"
+      asciiControlChars = map chr [0..31]
+
+  toBranchString (BranchName b) = b
+
+instance IsBranchName RemoteBranchName where
+  parseBranchName s = do
+    match  <- snd <$> matchRegexPR "^(.+?)/(.+)$" s
+    remote <- RemoteName <$> lookup 1 match
+    branch <- parseBranchName =<< lookup 2 match
+    return $ RemoteBranchName remote branch
+
+  toBranchString (RemoteBranchName (RemoteName remote) branch) =
+    remote ++ "/" ++ toBranchString branch
+
 data BranchStatus = UpToDate
                   | NoUpstream
                   | NewCommits
@@ -72,7 +111,7 @@ runGit = runEitherT . unGitM
 fetch :: String -> GitM ()
 fetch remote = void $ git "fetch" [cs remote]
 
-branchStatus :: String -> IssueKey -> GitM BranchStatus
+branchStatus :: RemoteName -> IssueKey -> GitM BranchStatus
 branchStatus remote issueKey = do
   localBranch  <- getCurrentBranch'
   localRev     <- getRev "HEAD"
@@ -86,36 +125,28 @@ branchStatus remote issueKey = do
                        | otherwise             -> NewCommits
   where
     validTrackingBranch = runMaybeT $ do
-      trackingBranch  <- MaybeT getCurrentTrackingBranch
-      (remote', name) <- hoistMaybe $ splitBranch trackingBranch
+      trackingBranch <- MaybeT getCurrentTrackingBranch
+      let RemoteBranchName remote' branch' = trackingBranch
       guard $ remote == remote'
-      guard $ containsIssueKey name
+      guard $ containsIssueKey (toBranchString branch')
       return trackingBranch
 
-    validRemoteBranch (RefName branchName) localRev = do
-      remoteBranches <- filter (withRemoteName (== remote)) <$> getRemoteBranches
+    validRemoteBranch localBranch localRev = do
+      remoteBranches <- filter ((== remote) . remoteName) <$> getRemoteBranches
       upToDateRemoteBranches <- filterM pointsToSameAsLocal remoteBranches
 
-      return $ find (withBranchName (== branchName))  upToDateRemoteBranches
-           <|> find (withBranchName containsIssueKey) upToDateRemoteBranches
-           <|> find (withBranchName (== branchName))  remoteBranches
-           <|> find (withBranchName containsIssueKey) remoteBranches
+      return $ find exactMatch upToDateRemoteBranches
+           <|> find issueMatch upToDateRemoteBranches
+           <|> find exactMatch remoteBranches
+           <|> find issueMatch remoteBranches
       where
         pointsToSameAsLocal branch = do
           rev <- getBranchRev branch
           return $ rev == localRev
-        withRemoteName f = maybe False (f . fst) . splitBranch
-        withBranchName f = maybe False (f . snd) . splitBranch
-
-    splitBranch :: RefName -> Maybe (String, String)
-    splitBranch (RefName branch) = do
-      match <- snd <$> matchRegexPR "^(.+?)/(.+)$" branch
-      remotePart <- lookup 1 match
-      namePart   <- lookup 2 match
-      return (remotePart, namePart)
+        exactMatch = (== localBranch) . branchName
+        issueMatch = containsIssueKey . toBranchString . branchName
 
     containsIssueKey = isInfixOf (show issueKey)
-    (<||>)  = liftM2 (<|>)
 
 workingCopyStatus :: GitM WorkingCopyStatus
 workingCopyStatus = do
@@ -125,79 +156,80 @@ workingCopyStatus = do
     1 -> return Dirty
     _ -> throwError . GitException $ cs err
 
-newBranch :: String -> String -> GitM ()
+newBranch :: IsBranchName b => BranchName -> Maybe b -> GitM ()
 newBranch newbranchName baseBranchName = void $
-  git "branch" ["--no-track", cs newbranchName, cs baseBranchName]
+  let baseBranchOpt = case baseBranchName of
+        Nothing -> []
+        Just n  -> [branchOpt n]
+      opts = ["--no-track", branchOpt newbranchName] ++ baseBranchOpt
+  in git "branch" opts
 
-checkoutBranch :: RefName -> GitM ()
+checkoutBranch :: BranchName -> GitM ()
 checkoutBranch branch =
   checkoutBranch' branch
   `orElse` withTempStash (checkoutBranch' branch)
 
-checkoutRemoteBranch :: RefName -> GitM ()
+checkoutRemoteBranch :: RemoteBranchName -> GitM ()
 checkoutRemoteBranch branch =
   checkoutRemoteBranch' branch
   `orElse` withTempStash (checkoutRemoteBranch' branch)
 
-mergeBranch :: FastForwardOption -> RefName -> RefName -> GitM ()
-mergeBranch ffOption (RefName source) target = void $ do
+mergeBranch :: IsBranchName b => FastForwardOption -> b -> BranchName -> GitM ()
+mergeBranch ffOption source target = void $ do
   checkoutBranch' target
-  git "merge" [toGitOption ffOption, cs source]
+  git "merge" [toGitOption ffOption, branchOpt source]
 
-checkoutBranch' :: RefName -> GitM ()
-checkoutBranch' (RefName branch) = void $
+checkoutBranch' :: BranchName -> GitM ()
+checkoutBranch' (BranchName branch) = void $
   git "checkout" [cs branch]
 
-checkoutRemoteBranch' :: RefName -> GitM ()
-checkoutRemoteBranch' (RefName branch) = void $
-  git "checkout" ["-t", cs branch]
+checkoutRemoteBranch' :: RemoteBranchName -> GitM ()
+checkoutRemoteBranch' branch = void $
+  git "checkout" ["-t", cs (toBranchString branch)]
 
-resolveBranch :: String -> GitM Ref
-resolveBranch branch = withGit $ \git -> do
-  rev <- liftIO $ resolveRevision git (Revision branch [])
-  rev `orThrow` GitException ("Unknown branch: " ++ branch)
+removeBranch :: BranchName -> GitM ()
+removeBranch branch = void $
+  git "branch" ["-d", branchOpt branch]
 
-removeBranch :: RefName -> GitM ()
-removeBranch (RefName branch) = void $
-  git "branch" ["-d", cs branch]
-
-getLocalBranches :: GitM [RefName]
+getLocalBranches :: GitM [BranchName]
 getLocalBranches = branchesFromOutput <$>
                    git "branch" ["--list"]
 
-getLocalMergedBranches :: GitM [RefName]
+getLocalMergedBranches :: GitM [BranchName]
 getLocalMergedBranches = branchesFromOutput <$>
                          git "branch" ["--list", "--merged"]
 
-getRemoteBranches :: GitM [RefName]
+getRemoteBranches :: GitM [RemoteBranchName]
 getRemoteBranches = branchesFromOutput <$>
                     git "branch" ["--list", "-r"]
 
-getCurrentBranch :: GitM (Maybe RefName)
+getCurrentBranch :: GitM (Maybe BranchName)
 getCurrentBranch =
   git "rev-parse" ["--abbrev-ref", "HEAD"]
   >$< (trim . cs)
-  >$< \case
-    "HEAD"     -> Nothing
-    branchName -> Just $ RefName branchName
+  >>= \case
+    "HEAD" -> return Nothing
+    branch -> Just <$> parseBranchName' branch
 
-getCurrentBranch' :: GitM RefName
+getCurrentBranch' :: GitM BranchName
 getCurrentBranch' = liftMaybe (GitException "Cannot get current branch") =<< getCurrentBranch
 
-getCurrentTrackingBranch :: GitM (Maybe RefName)
-getCurrentTrackingBranch = tryMaybe $ RefName . trim . cs
-                       <$> git "rev-parse" ["--abbrev-ref", "HEAD@{u}"]
+getCurrentTrackingBranch :: GitM (Maybe RemoteBranchName)
+getCurrentTrackingBranch = tryMaybe $
+  git "rev-parse" ["--abbrev-ref", "HEAD@{u}"]
+  >$< trim . cs
+  >>= parseBranchName'
 
-getBranchRev :: RefName -> GitM String
-getBranchRev (RefName branch) = getRev branch
+getBranchRev :: IsBranchName b => b -> GitM String
+getBranchRev = getRev . toBranchString
 
 getRev :: String -> GitM String
 getRev ref = trim . cs <$> git "rev-parse" [cs ref]
 
-branchesFromOutput :: T.Text -> [RefName]
-branchesFromOutput = mapMaybe (fmap RefName . parse) . lines . cs
+branchesFromOutput :: IsBranchName b => T.Text -> [b]
+branchesFromOutput = mapMaybe (parseBranchName <=< takeBranchName) . lines . cs
   where
-    parse = head' . words . trim . drop 2
+    takeBranchName = head' . words . trim . drop 2
     head' []    = Nothing
     head' (x:_) = Just x
 
@@ -209,13 +241,13 @@ withTempStash m = do
   return r
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
-git command options = git' command options >>= \case
+git command' options = git' command' options >>= \case
   (output, err, code) | code == 0 -> return output
                       | otherwise -> throwError . GitException $ cs err
 
 git' :: GitCommand -> [GitOption] -> GitM (T.Text, T.Text, Int)
-git' command options = shelly' $ (,,)
-                       <$> run "git" (command : options)
+git' command' options = shelly' $ (,,)
+                       <$> run "git" (command' : options)
                        <*> lastStderr
                        <*> lastExitCode
   where
@@ -223,5 +255,16 @@ git' command options = shelly' $ (,,)
 
 withGit :: (Git -> GitM a) -> GitM a
 withGit f = do
-  m <- liftIO . withCurrentRepo $ \git -> runGit (f git)
+  m <- liftIO $ withCurrentRepo (runGit . f)
   either throwError return m
+
+parseBranchName' :: IsBranchName b => String -> GitM b
+parseBranchName' name = liftMaybe ex $ parseBranchName name
+  where
+    ex = GitException $ "Invalid branch name: " ++ name
+
+branchOpt :: IsBranchName b => b -> GitOption
+branchOpt = cs . toBranchString
+
+(</>) :: RemoteName -> BranchName -> RemoteBranchName
+(</>) = RemoteBranchName
