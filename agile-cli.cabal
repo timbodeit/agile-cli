@@ -22,6 +22,10 @@ library
                      , App.Config
                      , App.ConfigBuilder
                      , App.Git
+                     , App.Git.Branch
+                     , App.Git.Core
+                     , App.Git.Remote
+                     , App.Git.WorkingCopy
                      , App.InitialSetup
                      , App.Stash
                      , App.Types
