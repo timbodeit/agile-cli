@@ -380,6 +380,21 @@ liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
   where
     convertException (Git.GitException s) = GitException s
 
+-- Branch Config Helpers
+
+configRemote :: Getter Config Git.RemoteName
+configRemote = configRemoteName.to Git.RemoteName
+
+localDevelopBranch :: IsBranchName b => Getter Config (Git.GitM b)
+localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
+
+remoteDevelopBranch :: Config -> Git.GitM RemoteBranchName
+remoteDevelopBranch config = do
+  devBranch <- view localDevelopBranch config
+  return $ (config^.configRemote) </> devBranch
+
+-- Exception Handling
+
 handleAppException :: AppException -> IO ()
 handleAppException exception = do
   case exception of
@@ -407,13 +422,3 @@ handleAppException exception = do
   where
     hasErrorField key (BadRequestInfo _ errorMap) = Map.member key errorMap
 
-configRemote :: Getter Config Git.RemoteName
-configRemote = configRemoteName.to Git.RemoteName
-
-localDevelopBranch :: IsBranchName b => Getter Config (Git.GitM b)
-localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
-
-remoteDevelopBranch :: Config -> Git.GitM RemoteBranchName
-remoteDevelopBranch config = do
-  devBranch <- view localDevelopBranch config
-  return $ (config^.configRemote) </> devBranch
