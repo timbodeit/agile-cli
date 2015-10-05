@@ -150,7 +150,8 @@ handleMissingKeys keys configPath partialConfig = do
   forM_ keys $ \key -> putStrLn $ "- " ++ show key
   askYesNoWithDefault True ("Fill default values to config at " ++ configPath ++ "?") >>= \case
     False -> error "Please fix your config, then."
-    True  -> let completeConfig  = fillMissingConfigKeys partialConfig keys referenceConfig
+    True  -> let defaultPartialConfig = PartialConfig $ toJSON defaultConfig
+                 completeConfig  = fillMissingConfigKeys defaultPartialConfig partialConfig keys
                  Right newConfig = fromPartialConfig completeConfig
              in LBS.writeFile configPath (prettyEncodeConfig newConfig) >> readConfig'
 
