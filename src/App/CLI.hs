@@ -141,9 +141,11 @@ startIssue issueKey = do
                                <*> createBranchForIssueKey
 
 finishIssueWithPullRequest :: IssueKey -> AppM ()
-finishIssueWithPullRequest issueKey = (,)
-  <$> liftGit Git.branchStatus
-  <*> liftGit Git.workingCopyStatus
+finishIssueWithPullRequest issueKey = do
+  gitFetch
+  remote <- view configRemoteName <$> getConfig
+  (,) <$> liftGit (Git.branchStatus remote issueKey)
+      <*> liftGit Git.workingCopyStatus
   >>= \case
     (NoUpstream, _) -> throwError $ UserInputException
       "Your current branch has not been pushed! Cannot create pull request on remote server."

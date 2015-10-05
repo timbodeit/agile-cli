@@ -10,7 +10,7 @@ import           Control.Exception
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import           Control.Monad.Trans.Either
+import           Control.Monad.Trans.Maybe
 import           Data.Char
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
@@ -30,6 +30,9 @@ liftMaybe ex = maybe (throwError ex) return
 
 tryMaybe :: (MonadError e m) => m a -> m (Maybe a)
 tryMaybe m = liftM Just m `orElse` return Nothing
+
+hoistMaybe :: Monad m => Maybe a -> MaybeT m a
+hoistMaybe = MaybeT . return
 
 onError :: (MonadError e m) => m a -> m a -> m a
 onError = flip catchError . const
@@ -71,6 +74,13 @@ liftEitherM = (>>= either throwError return)
 
 (<$<) :: Functor f => (a -> b) -> (c -> f a) -> c -> f b
 (<$<) f g = (f <$>) . g
+
+(<||>) :: (Alternative a, Monad m, Eq (a b)) => m (a b) -> m (a b) -> m (a b)
+ma <||> mb = do
+  a <- ma
+  if a == empty
+  then mb
+  else ma
 
 -- String handling
 

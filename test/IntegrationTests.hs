@@ -11,6 +11,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char       hiding (bracket)
 
 import           App.Git
+import           Jira.API
 
 import           Control.Exception
 import           Data.String
@@ -31,21 +32,63 @@ branchStatusTests = withGitTestEnvironment $ \dir -> do
   let localShelly = shelly' . chdir (fromString dir)
 
   -- Set up a local feature branch
-  localShelly $ run "git" ["checkout", "-b", "feature/TEST-42-branch-status-test"]
+  let branchName = "feature/" ++ show issueKey ++ "-branch-status-test"
+  localShelly $ run "git" ["checkout", "-b", fromString branchName]
   assertCurrentBranchStatus NoUpstream
 
-  -- Setup an up-to-date tracking branch
-  localShelly $ run "git" ["push", "-u", "origin", "HEAD"]
+  -- Push to a remote branch with the same name (without making it the tracking branch)
+  let branchArg = branchName ++ ":" ++ branchName
+  localShelly $ run "git" ["push", fromString remote, fromString branchArg]
   assertCurrentBranchStatus UpToDate
 
-  -- Add new local commit
-  localShelly $ run "git" ["commit", "--allow-empty", "-am", "Second commit"]
+  -- Add local commit
+  localShelly $ run "git" ["commit", "--allow-empty", "-am", "Changed something"]
   assertCurrentBranchStatus NewCommits
+
+  -- Push to a non-tracking remote branch without the issue key in it
+  let otherBranchArg = branchName ++ ":feature/TEST-43-something-else"
+  localShelly $ run "git" ["push", fromString remote, fromString otherBranchArg]
+  assertCurrentBranchStatus NewCommits
+
+  -- Making it the tracking branch does not have an influence
+  localShelly $ run "git" ["push", "-u", fromString remote, fromString otherBranchArg]
+  assertCurrentBranchStatus NewCommits
+
+  -- Push to a non-tracking remote branch on other remote
+  withSystemTempDirectory "agile-test-other-remote" $ \otherRemoteDir -> do
+    shelly' . chdir (fromString otherRemoteDir) $ run "git" ["init", "--bare"]
+    localShelly $ run "git" ["remote", "add", "other", fromString otherRemoteDir]
+    localShelly $ run "git" ["push", "other", fromString branchArg]
+    assertCurrentBranchStatus NewCommits
+
+    -- Making it the tracking branch does not have an influence
+    localShelly $ run "git" ["push", "-u", "other", fromString branchArg]
+    assertCurrentBranchStatus NewCommits
+
+  -- Push to a branch on the right remote containing the issue key
+  let branchArg' = branchName ++ ":feature/" ++ show issueKey ++ "-alternative"
+  localShelly $ run "git" ["push", fromString remote, fromString branchArg']
+  assertCurrentBranchStatus UpToDate
+
+  -- Making it the tracking branch still works
+  localShelly $ run "git" ["push", "-u", fromString remote, fromString branchArg']
+  assertCurrentBranchStatus UpToDate
+
+  -- Set up the canonical remote branch as tracking
+  let remoteBranch = remote ++ "/" ++ branchName
+  localShelly $ run "git" ["branch", "-u", fromString remoteBranch]
+  assertCurrentBranchStatus NewCommits
+
+  -- Push to tracking branch
+  localShelly $ run "git" ["push", fromString remote]
+  assertCurrentBranchStatus UpToDate
   where
-    assertCurrentBranchStatus expected = runGit branchStatus >>= \case
-      Left _       -> assertFailure "Branch status should succeed."
+    assertCurrentBranchStatus expected = runGit (branchStatus remote issueKey) >>= \case
+      Left e       -> assertFailure $ "Branch status should succeed. Failure is: " ++ show e
       Right status -> assertBranchStatus expected status
     assertBranchStatus = assertEqual "Unexpected branch status"
+    issueKey = IssueKey "TEST" (IssueNumber 42)
+    remote = "origin"
 
 workingCopyStatusTests :: Assertion
 workingCopyStatusTests = withGitTestEnvironment $ \dir -> do
