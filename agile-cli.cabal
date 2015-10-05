@@ -63,8 +63,8 @@ library
                      , unordered-containers
                      , split
                      --, readline
-  extra-lib-dirs: /usr/local/opt/openssl/lib
-  include-dirs: /usr/local/opt/openssl/include
+  extra-lib-dirs:      /usr/local/opt/openssl/lib
+  include-dirs:        /usr/local/opt/openssl/include
   default-language:    Haskell2010
 
 executable agile-cli
@@ -76,26 +76,26 @@ executable agile-cli
   default-language:    Haskell2010
 
 test-suite tests
-  type:              exitcode-stdio-1.0
-  hs-source-dirs:    test
-  main-is:           Tests.hs
-  build-depends:     HUnit
-                   , QuickCheck
-                   , aeson
-                   , agile-cli
-                   , base >=4.7 && <4.9
-                   , checkers
-                   , directory
-                   , filepath
-                   , jira-api
-                   , lens
-                   , parsec
-                   , semigroups
-                   , shelly
-                   , temporary
-                   , test-framework
-                   , test-framework-hunit
-                   , test-framework-quickcheck2
-                   , text
-                   , vector
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Tests.hs
+  build-depends:       HUnit
+                     , QuickCheck
+                     , aeson
+                     , agile-cli
+                     , base >=4.7 && <4.9
+                     , checkers
+                     , directory
+                     , filepath
+                     , jira-api
+                     , lens
+                     , parsec
+                     , semigroups
+                     , shelly
+                     , temporary
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , text
+                     , vector
   default-language:  Haskell2010
