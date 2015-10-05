@@ -47,11 +47,13 @@ $(deriveJSON defaultOptions { fieldLabelModifier = drop 6
                             } ''StashConfig)
 
 data Config = Config
-  { _configJiraConfig     :: JiraConfig
-  , _configStashConfig    :: StashConfig
-  , _configDevelopBranch  :: String
-  , _configRemoteName     :: String
-  , _configBrowserCommand :: String
+  { _configJiraConfig          :: JiraConfig
+  , _configStashConfig         :: StashConfig
+  , _configDevelopBranch       :: String
+  , _configRemoteName          :: String
+  , _configDefaultBranchPrefix :: String
+  , _configBranchPrefixMap     :: Map.Map String String
+  , _configBrowserCommand      :: String
   } deriving (Show, Eq)
 
 makeLenses ''Config

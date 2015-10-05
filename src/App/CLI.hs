@@ -253,15 +253,14 @@ createBranchForIssueKey issueKey = withAsyncGitFetch $ \asyncFetch -> do
                        "Short description for branch?"
   config <- getConfig
   let baseBranchName = config^.configRemoteName ++ "/" ++ config^.configDevelopBranch
+  let branchPrefix = config^.configBranchPrefixMap.at issueTypeName.non (config^.configDefaultBranchPrefix)
   let branchSuffix = view iKey issue ++ "-" ++ branchDescription
-      branchName = branchType issueTypeName ++ "/" ++ branchSuffix
+      branchName = branchPrefix ++ branchSuffix
 
   liftIO $ wait asyncFetch
   liftGit $ Git.newBranch branchName baseBranchName
   return $ RefName branchName
   where
-    branchType "Bug" = "bugfix"
-    branchType _     = "feature"
     toBranchName = map (\c -> if isSpace c then '-' else c)
     generateName = toBranchName . map toLower . take 30
 

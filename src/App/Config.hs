@@ -66,18 +66,22 @@ defaultSearchAliases = Map.fromList
 
 defaultConfig :: Config
 defaultConfig = Config
-  { _configJiraConfig       = defaultJiraConfig
-  , _configStashConfig      = defaultStashConfig
-  , _configDevelopBranch    = "develop"
-  , _configRemoteName       = "origin"
-  , _configBrowserCommand   = "open"
+  { _configJiraConfig          = defaultJiraConfig
+  , _configStashConfig         = defaultStashConfig
+  , _configDevelopBranch       = "develop"
+  , _configRemoteName          = "origin"
+  , _configDefaultBranchPrefix = "feature/"
+  , _configBranchPrefixMap     = Map.fromList [("Bug", "bugfix/")]
+  , _configBrowserCommand      = "open"
   }
 
 emptyConfig :: Config
 emptyConfig = Config
-  { _configDevelopBranch    = ""
-  , _configRemoteName       = ""
-  , _configBrowserCommand   = ""
+  { _configDevelopBranch       = ""
+  , _configRemoteName          = ""
+  , _configDefaultBranchPrefix = ""
+  , _configBranchPrefixMap     = Map.empty
+  , _configBrowserCommand      = ""
   , _configJiraConfig       = JiraConfig { _jiraBaseUrl               = ""
                                          , _jiraUsername              = ""
                                          , _jiraProject               = ""
