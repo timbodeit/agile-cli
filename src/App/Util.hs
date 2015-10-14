@@ -12,6 +12,8 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import           Data.Char
+import           Data.List
+import           Data.List.Split
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
 import           Text.Read
@@ -101,7 +103,10 @@ openInBrowser url = getConfig >>= liftIO . openInBrowser' url
 openInBrowser' :: String -> Config -> IO ()
 openInBrowser' url config =
   let command = view configBrowserCommand config
-  in  void . createProcess . shell $ command ++ " '" ++ url ++ "'"
+  in  void . createProcess . shell $ command ++ " '" ++ escape url ++ "'"
+  where
+    escape = replace "'" "'\"'\"'"
+    replace old new = intercalate new . splitOn old
 
 ask :: String -> IO String
 ask question = putStrLn question >> putStr' "> " >> getLine'
