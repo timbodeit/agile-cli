@@ -369,9 +369,8 @@ runApp' m = runEitherT $ do
 
 liftJira :: JiraM a -> AppM a
 liftJira m = do
-  configPath    <- getConfigPath
   config        <- getConfig
-  jiraApiConfig <- liftEitherIO $ getJiraApiConfig configPath config
+  jiraApiConfig <- liftEitherIO $ getJiraApiConfig config
   result <- liftIO $ runJira jiraApiConfig m
   either (throwError . JiraApiException) return result
 
