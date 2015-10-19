@@ -46,9 +46,21 @@ makeLenses ''StashConfig
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 6
                             } ''StashConfig)
 
+data GithubConfig = GithubConfig
+  { _githubUsername   :: String
+  , _githubRepo       :: String
+  , _githubOAuthToken :: String
+  } deriving (Show, Eq)
+
+makeLenses ''GithubConfig
+
+$(deriveJSON defaultOptions { fieldLabelModifier = drop 7
+                            } ''GithubConfig)
+
 data Config = Config
   { _configJiraConfig          :: JiraConfig
   , _configStashConfig         :: StashConfig
+  , _configGithubConfig        :: GithubConfig
   , _configDevelopBranch       :: String
   , _configRemoteName          :: String
   , _configDefaultBranchPrefix :: String

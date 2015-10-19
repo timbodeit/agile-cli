@@ -48,6 +48,13 @@ defaultStashConfig = StashConfig
   , _stashReviewers  = []
   }
 
+defaultGithubConfig :: GithubConfig
+defaultGithubConfig = GithubConfig
+  { _githubUsername   = "your_username"
+  , _githubRepo       = "myrepo"
+  , _githubOAuthToken = ""
+  }
+
 defaultIssueTypeMap :: Map.Map String String
 defaultIssueTypeMap = Map.fromList
   [ "b" ~> "Bug"
@@ -68,6 +75,7 @@ defaultConfig :: Config
 defaultConfig = Config
   { _configJiraConfig          = defaultJiraConfig
   , _configStashConfig         = defaultStashConfig
+  , _configGithubConfig        = defaultGithubConfig
   , _configDevelopBranch       = "develop"
   , _configRemoteName          = "origin"
   , _configDefaultBranchPrefix = "feature/"
@@ -98,6 +106,10 @@ emptyConfig = Config
                                           , _stashRepository = ""
                                           , _stashReviewers  = []
                                           }
+  , _configGithubConfig     = GithubConfig { _githubUsername   = ""
+                                           , _githubRepo       = ""
+                                           , _githubOAuthToken = ""
+                                           }
   }
 
 -- Config loading
