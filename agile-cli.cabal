@@ -73,11 +73,11 @@ library
 
 executable agile-cli
   main-is:             AgileCli.hs
-  -- other-extensions:
   build-depends:       base >=4.7 && <4.9
                      , agile-cli
   hs-source-dirs:      src-exec
   default-language:    Haskell2010
+  ghc-options:         -O2
 
 test-suite tests
   type:                exitcode-stdio-1.0
