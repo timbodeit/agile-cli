@@ -16,7 +16,9 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     App.CLI
+  exposed-modules:     App.Backends.Stash
+                     , App.Backends.Types
+                     , App.CLI
                      , App.CLI.Options
                      , App.CLI.Parsers
                      , App.Config
@@ -27,7 +29,6 @@ library
                      , App.Git.Remote
                      , App.Git.WorkingCopy
                      , App.InitialSetup
-                     , App.Stash
                      , App.Types
                      , App.Util
   build-depends:       base >=4.7 && <4.9

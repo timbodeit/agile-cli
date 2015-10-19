@@ -2,9 +2,11 @@
 {-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE Rank2Types                #-}
 
 module App.CLI (execCLI) where
 
+import           App.Backends.Stash
 import           App.CLI.Options
 import           App.CLI.Parsers
 import           App.Config
@@ -15,7 +17,6 @@ import           App.Git                    (BranchName (..), BranchStatus (..),
                                              toBranchString, (</>))
 import qualified App.Git                    as Git
 import           App.InitialSetup
-import           App.Stash
 import           App.Types
 import           App.Util
 
@@ -82,7 +83,7 @@ runCLI options = case options^.cliCommand of
   CheckoutCommand issueString ->
     run $ withIssueKey (Just issueString) checkoutBranchForIssueKey
   CreatePullRequestCommand issueString ->
-    run $ withIssueKey issueString openPullRequest'
+    run $ withIssueKey issueString openPullRequest
   FinishCommand finishType issueString ->
     run $ withIssueKey issueString $
     case finishType of
@@ -170,7 +171,7 @@ finishIssueWithPullRequest issueKey = do
 finishIssueWithPullRequest' :: IssueKey -> AppM ()
 finishIssueWithPullRequest' issueKey = do
   liftJira $ resolveIssue issueKey
-  openPullRequest' issueKey
+  openPullRequest issueKey
 
 finishIssueWithMerge :: IssueKey -> AppM ()
 finishIssueWithMerge issueKey = do
@@ -276,12 +277,14 @@ createIssue' issueType summary = do
   let project = ProjectKey $ config^.configJiraConfig.jiraProject
   liftJira . createIssue $ IssueCreationData project issueType summary
 
-openPullRequest' :: IssueKey -> AppM ()
-openPullRequest' issueKey = do
+openPullRequest :: IssueKey -> AppM ()
+openPullRequest issueKey = do
   config <- getConfig
   source <- branchForIssueKey issueKey
-  target <- liftGit $ config^. localDevelopBranch
-  openPullRequest source target
+  target <- liftGit $ config ^. localDevelopBranch
+
+  url    <- withPullRequestBackend $ createPullRequest source target
+  openInBrowser url
 
 issueBrowserUrl :: IssueKey -> AppM String
 issueBrowserUrl issue = do
@@ -356,6 +359,11 @@ withIssue s f = withIssueKey s (f <=< liftJira . getIssue)
 
 matchesIssueKey :: IsBranchName b => IssueKey -> b -> Bool
 matchesIssueKey issueKey branch = show issueKey `isInfixOf` toBranchString branch
+
+-- Backends
+
+withPullRequestBackend :: (forall p. PullRequestBackend p => p -> AppM a) -> AppM a
+withPullRequestBackend f = f =<< view configStashConfig <$> getConfig
 
 -- App Monad
 
