@@ -1,4 +1,4 @@
-module App.CLI.Parsers where
+module App.Backends.Jira.Parsers where
 
 import           App.Types
 import           App.Util
@@ -41,3 +41,4 @@ many1Till p end = do
   r <- manyTill p end
   guard . not $ null r
   return r
+

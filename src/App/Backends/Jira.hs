@@ -2,8 +2,8 @@
 
 module App.Backends.Jira (IssueBackend(..), IsIssue(..), IsIssueId()) where
 
+import           App.Backends.Jira.Parsers
 import           App.Backends.Types
-import           App.CLI.Parsers
 import           App.Config
 import           App.Git.Branch
 import           App.Types

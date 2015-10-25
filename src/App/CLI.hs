@@ -8,7 +8,6 @@ module App.CLI (execCLI) where
 
 import           App.Backends               hiding (issueId)
 import           App.CLI.Options
-import           App.CLI.Parsers
 import           App.Config
 import           App.ConfigBuilder
 import           App.Git                    (BranchName (..), BranchStatus (..),
