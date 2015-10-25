@@ -1,6 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module App.Git.Branch where
 
@@ -11,12 +11,11 @@ import           Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import           Data.Char
-import           Data.List                  (find, isInfixOf, isSuffixOf)
-import           Data.Maybe                 (mapMaybe)
+import           Data.List                 (find, isInfixOf, isSuffixOf)
+import           Data.Maybe                (mapMaybe)
 import           Data.String
 import           Data.String.Conversions
-import qualified Data.Text                  as T
-import           Jira.API                   (IssueKey)
+import qualified Data.Text                 as T
 import           Text.RegexPR
 
 newtype BranchName = BranchName String deriving (Eq, Show, IsString)
@@ -139,8 +138,8 @@ mergeBranch ffOption source target = void $ do
   checkoutBranch' target
   git "merge" [toGitOption ffOption, branchOpt source]
 
-branchStatus :: RemoteName -> IssueKey -> GitM BranchStatus
-branchStatus remote issueKey = do
+branchStatus :: RemoteName -> String -> GitM BranchStatus
+branchStatus remote issueId = do
   localBranch  <- getCurrentBranch'
   localRev     <- getRev "HEAD"
 
@@ -156,7 +155,7 @@ branchStatus remote issueKey = do
       trackingBranch <- MaybeT getCurrentTrackingBranch
       let RemoteBranchName remote' branch' = trackingBranch
       guard $ remote == remote'
-      guard $ containsIssueKey (toBranchString branch')
+      guard $ containsIssueId (toBranchString branch')
       return trackingBranch
 
     validRemoteBranch localBranch localRev = do
@@ -172,9 +171,9 @@ branchStatus remote issueKey = do
           rev <- getBranchRev branch
           return $ rev == localRev
         exactMatch = (== localBranch) . branchName
-        issueMatch = containsIssueKey . toBranchString . branchName
+        issueMatch = containsIssueId . toBranchString . branchName
 
-    containsIssueKey = isInfixOf (show issueKey)
+    containsIssueId = isInfixOf issueId
 
 parseBranchName' :: IsBranchName b => String -> GitM b
 parseBranchName' name = liftMaybe ex $ parseBranchName name

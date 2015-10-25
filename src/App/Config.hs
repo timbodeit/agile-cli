@@ -118,10 +118,9 @@ emptyConfig = Config
 -- errors are captured as AppExceptions in an either type.
 type AppIO a = IO (Either AppException a)
 
-getJiraApiConfig :: Config -> AppIO J.JiraConfig
-getJiraApiConfig config =
-  let jiraConfig    = config^.configJiraConfig
-      authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
+getJiraApiConfig :: JiraConfig -> AppIO J.JiraConfig
+getJiraApiConfig jiraConfig =
+  let authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
                                     pk
                                     (jiraConfig^.jiraOAuthAccessToken)
                                     (jiraConfig^.jiraOAuthAccessSecret)
