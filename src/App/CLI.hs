@@ -63,8 +63,15 @@ runCLI options = case options^.cliCommand of
     run $ withIssue issueString $ const . printIssue
   OpenCommand issueString ->
     run $ withIssueId issueString $ \issueId -> openInBrowser <=< issueUrl issueId
-  -- SearchCommand searchOptions jql ->
-  --   run $ searchIssues searchOptions jql
+  SearchCommand searchOptions s -> run $ withIssueBackend $ \issueBackend -> do
+    s' <- resolveSearch s
+
+    if searchOnWebsite searchOptions
+    then
+      openInBrowser =<< searchUrl searchOptions s' issueBackend
+    else do
+      issues <- searchIssues searchOptions s' issueBackend
+      mapM_ (liftIO . putStrLn . summarizeOneLine) issues
   NewCommand start issueTypeString summary -> run $ withIssueBackend $ \issueBackend -> do
     issueType <- parseIssueType' issueTypeString issueBackend
     let issueCreationData = makeIssueCreationData issueType summary issueBackend
@@ -102,47 +109,6 @@ runCLI options = case options^.cliCommand of
 
 printIssue :: IsIssue i => i -> AppM ()
 printIssue = liftIO . putStrLn . summarize
-
--- searchIssues :: SearchOptions -> String -> AppM ()
--- searchIssues (SearchOptions allProjects onlyMyIssues inBrowser) search = do
---   jiraConfig <- view configJiraConfig <$> getConfig
---   jql <- parseSearch search
---   let optionConditions = wrapParens . intercalate " AND " $
---                          ["project = "  ++ jiraConfig^.jiraProject  | not allProjects]
---                       ++ ["assignee = " ++ jiraConfig^.jiraUsername | onlyMyIssues]
---   let jql' = intercalate " AND " $
---              [optionConditions | optionConditions /= ""]
---           ++ [jql | jql /= ""]
-
---   if inBrowser
---   then openInBrowser $ jiraConfig^.jiraBaseUrl ++ "/issues/?jql=" ++ urlEncode' jql'
---   else do
---     issues <- liftJira $ searchIssues' jql'
---     liftIO $ mapM_ (putStrLn . showIssue) issues
---   where
---     showIssue i = i^.iKey ++ ": " ++ i^.iSummary
---     urlEncode' = cs . urlEncode True . cs
---     wrapParens "" = ""
---     wrapParens s  = "(" ++ s ++ ")"
-
--- startIssue :: IssueKey -> AppM ()
--- startIssue issueKey = do
---   gitFetch
---   branch <- getOrCreateBranch issueKey
-
---   -- Try to fast-forward to current development branch.
---   -- This is useful if the branch was already merged.
---   config <- getConfig
---   remoteBranch <- liftGit $ remoteDevelopBranch config
---   attempt . liftGit $ Git.mergeBranch Git.OnlyFastForward
---                                       remoteBranch
---                                       branch
-
---   liftGit $ Git.checkoutBranch branch
---   startProgress' issueKey
---   where
---     getOrCreateBranch = orElse <$> branchForIssueKey
---                                <*> createBranchForIssueKey
 
 finishIssueWithPullRequest :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithPullRequest issueId issueBackend = do
@@ -297,8 +263,8 @@ parseIssueType' typeName issueBackend = do
   let resolvedName = Map.findWithDefault typeName typeName aliasMap
   return $ toIssueTypeIdentifier resolvedName issueBackend
 
-parseSearch :: String -> AppM String
-parseSearch s = do
+resolveSearch :: String -> AppM String
+resolveSearch s = do
   searchMap <- view (configJiraConfig.jiraSearchAliases) <$> getConfig
   return . trim $ Map.findWithDefault s s searchMap
 

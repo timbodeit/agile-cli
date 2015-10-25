@@ -4,6 +4,7 @@ module App.Backends.Jira (IssueBackend(..), IsIssue(..), IsIssueId()) where
 
 import           App.Backends.Jira.Parsers
 import           App.Backends.Types
+import           App.CLI.Options
 import           App.Config
 import           App.Git.Branch
 import           App.Types
@@ -12,11 +13,13 @@ import           App.Util
 import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import           Data.List            (find)
-import qualified Jira.API             as Jira
+import           Data.List                 (find, intercalate)
+import           Data.String.Conversions
+import qualified Jira.API                  as Jira
+import           Network.HTTP.Types.URI    (urlEncode)
+import           Text.Parsec               (parse)
 import           Text.Read
 import           Text.RegexPR
-import           Text.Parsec (parse)
 
 instance IsIssueId Jira.IssueKey
 
@@ -39,7 +42,7 @@ instance IsIssue Jira.Issue where
 
   issueType issue = issue^.Jira.iType
   summarize = show
-  summarizeOneLine = Jira._iSummary
+  summarizeOneLine issue = (issue^.Jira.iKey) ++ ": " ++ (issue^.Jira.iSummary)
 
 instance IssueBackend JiraConfig where
   type Issue JiraConfig = Jira.Issue
@@ -55,6 +58,13 @@ instance IssueBackend JiraConfig where
     Jira.makeIssueTransition issueId $ Jira.TransitionName transitionName
 
   issueUrl issueId jiraConfig = return $ (jiraConfig^.jiraBaseUrl) ++ "/browse/" ++ show issueId
+
+  searchUrl options s jiraConfig = return $
+    let jql     = toJql options s jiraConfig
+        baseUrl = jiraConfig^.jiraBaseUrl
+    in  baseUrl ++ "/issues/?jql=" ++ urlEncode' jql
+    where
+      urlEncode' = cs . urlEncode True . cs
 
   parseIssueId = const . parseIssueKey
 
@@ -81,11 +91,30 @@ instance IssueBackend JiraConfig where
       find (\p -> p^._1.Jira.pKey == projectKey) projectPairs
     return $ snd projectPair
 
+  searchIssues options s = runReaderT $ do
+    jql <- liftPure $ toJql options s
+    liftJira' $ Jira.searchIssues' jql
+
   startProgress = liftJira . Jira.startProgress
   stopProgress  = liftJira . Jira.stopProgress
   resolve       = liftJira . Jira.resolveIssue
   close         = liftJira . Jira.closeIssue
   reopen        = liftJira . Jira.reopenIssue
+
+
+-- Search options
+
+toJql :: SearchOptions -> String -> JiraConfig -> String
+toJql (SearchOptions allProjects onlyMyIssues inBrowser) jql jiraConfig =
+  let optionConditions = wrapParens . intercalate " AND " $
+                         ["project = "  ++ jiraConfig^.jiraProject  | not allProjects]
+                      ++ ["assignee = " ++ jiraConfig^.jiraUsername | onlyMyIssues]
+  in  intercalate " AND " $
+        [optionConditions | optionConditions /= ""]
+        ++ [jql | jql /= ""]
+  where
+    wrapParens "" = ""
+    wrapParens s  = "(" ++ s ++ ")"
 
 -- Helpers
 
@@ -97,3 +126,6 @@ liftJira m jiraConfig = do
 
 liftJira' :: Jira.JiraM a -> ReaderT JiraConfig AppM a
 liftJira' = ReaderT . liftJira
+
+liftPure :: (r -> a) -> ReaderT r AppM a
+liftPure = ReaderT . fmap return

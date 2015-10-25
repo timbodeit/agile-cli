@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies     #-}
 
@@ -6,8 +5,7 @@ module App.Backends.Types where
 
 import           App.Git.Branch
 import           App.Types
-
-import Control.Lens
+import           App.CLI.Options
 
 -- Pull Requests
 class PullRequestBackend a where
@@ -53,6 +51,9 @@ class IsIssue (Issue backend) => IssueBackend backend where
   makeIssueCreationData :: IssueTypeIdentifier (Issue backend) -> String -> backend -> IssueCreationData backend
 
   getAvailableIssueTypes :: backend -> AppM [IssueType (Issue backend)]
+
+  searchIssues :: SearchOptions -> String -> backend -> AppM [Issue backend]
+  searchUrl    :: SearchOptions -> String -> backend -> AppM String
 
   startProgress :: IssueId (Issue backend)   -> backend -> AppM ()
   startProgress = flip makeIssueTransition "start"
