@@ -114,8 +114,12 @@ startWorkOnIssue :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 startWorkOnIssue issueId issueBackend = do
   branch <- createBranchForIssueKey issueId issueBackend
   liftGit $ Git.checkoutBranch branch
-  startProgress issueId issueBackend
-  -- TODO don't complain about issue already being started
+  startProgress'
+  where
+    startProgress' = do
+      issue <- getIssueById issueId issueBackend
+      when (issueStatus issue /= InProgress) $
+        startProgress issueId issueBackend
 
 finishIssueWithPullRequest :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithPullRequest issueId issueBackend = do
