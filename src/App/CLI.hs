@@ -33,7 +33,6 @@ import           Data.List
 import qualified Data.Map                   as Map
 import           Data.String.Conversions
 import qualified Jira.API                   as Jira
-import           Network.HTTP.Types.URI
 import           Options.Applicative
 import           System.Exit
 import           System.IO
@@ -53,8 +52,8 @@ runCLI :: CLIOptions -> IO ()
 runCLI options = case options^.cliCommand of
   InitCommand ->
     doInitSetup
-  -- ConfigTestCommand ->
-  --   configTest
+  ConfigTestCommand ->
+    configTest
   ShowIssueTypesCommand ->
     showIssueTypes
   CleanupBranchesCommand ->
@@ -151,25 +150,25 @@ finishIssueWithMerge issueId issueBackend = do
   target <- liftGit $ config^.localDevelopBranch
   liftGit $ Git.mergeBranch Git.NonFastForward source target
 
--- configTest :: IO ()
--- configTest = runAppIO $ do
---   configParts <- EitherT searchConfigParts
+configTest :: IO ()
+configTest = runAppIO $ do
+  configParts <- EitherT searchConfigParts
 
---   liftIO $ do
---     putStrLn "> Using config files:"
---     mapM_ printConfigPath $ sort configParts
---     putStrLn ""
---     putStrLn "> Putting together config files..."
+  liftIO $ do
+    putStrLn "> Using config files:"
+    mapM_ printConfigPath $ sort configParts
+    putStrLn ""
+    putStrLn "> Putting together config files..."
 
---   EitherT readConfig'
+  EitherT readConfig'
 
---   liftIO $ do
---     putStrLn "> Running JIRA test request..."
---     run . liftJira $ getRaw' "application-properties"
---     putStrLn "Config seems OK."
---   where
---     runAppIO = either handleAppException (const $ return ()) <=< runEitherT
---     printConfigPath = putStrLn . unConfigPath . configPartPath
+  liftIO $ putStrLn "> Testing issue backend"
+  EitherT $ runApp' $ withIssueBackend testBackend
+
+  liftIO $ putStrLn "Config seems OK."
+  where
+    runAppIO = either handleAppException (const $ return ()) <=< runEitherT
+    printConfigPath = putStrLn . unConfigPath . configPartPath
 
 showIssueTypes :: IO ()
 showIssueTypes = run $ withIssueBackend $ \issueBackend -> do

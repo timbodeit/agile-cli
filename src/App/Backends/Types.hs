@@ -69,3 +69,5 @@ class IsIssue (Issue backend) => IssueBackend backend where
 
   reopen :: IssueId (Issue backend)   -> backend -> AppM ()
   reopen = flip makeIssueTransition "reopen"
+
+  testBackend :: backend -> AppM ()

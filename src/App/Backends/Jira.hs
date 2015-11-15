@@ -11,6 +11,7 @@ import           App.Types
 import           App.Util
 
 import           Control.Lens
+import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.List                 (find, intercalate)
@@ -94,6 +95,9 @@ instance IssueBackend JiraConfig where
   searchIssues options s = runReaderT $ do
     jql <- liftPure $ toJql options s
     liftJira' $ Jira.searchIssues' jql
+
+  testBackend = liftJira . void $
+    Jira.getRaw' "application-properties"
 
   startProgress = liftJira . Jira.startProgress
   stopProgress  = liftJira . Jira.stopProgress
