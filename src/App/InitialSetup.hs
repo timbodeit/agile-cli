@@ -166,7 +166,7 @@ isAuthConfigured config =
   && config^.configJiraConfig.jiraOAuthAccessSecret /= ""
 
 writeConfigTo :: FilePath -> Config -> IO ()
-writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
+writeConfigTo path = LBS.writeFile path . prettyEncode
 
 writeConfigToLocalDir :: Config -> IO ()
 writeConfigToLocalDir = writeConfigTo preferredConfigFileName
