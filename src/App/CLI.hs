@@ -77,9 +77,10 @@ runCLI options = case options^.cliCommand of
     issueId <- createIssue issueCreationData issueBackend
     openInBrowser =<< issueUrl issueId issueBackend
     liftIO $ print issueId
-    when start $ startProgress issueId issueBackend
+    when start $ startWorkOnIssue issueId issueBackend
   StartCommand issueString ->
-    run $ withIssueId issueString startProgress
+    run $ withIssueId issueString $ \issueId issueBackend ->
+      startWorkOnIssue issueId issueBackend
   StopCommand issueString ->
     run $ withIssueId issueString stopProgress
   ResolveCommand issueString ->
@@ -108,6 +109,13 @@ runCLI options = case options^.cliCommand of
 
 printIssue :: IsIssue i => i -> AppM ()
 printIssue = liftIO . putStrLn . summarize
+
+startWorkOnIssue :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
+startWorkOnIssue issueId issueBackend = do
+  branch <- createBranchForIssueKey issueId issueBackend
+  liftGit $ Git.checkoutBranch branch
+  startProgress issueId issueBackend
+  -- TODO don't complain about issue already being started
 
 finishIssueWithPullRequest :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithPullRequest issueId issueBackend = do
