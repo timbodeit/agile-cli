@@ -20,6 +20,7 @@ class (Eq a, Show a) => IsIssueType a where
   issueTypeDescription :: a -> String
 
 data IssueStatus = Open
+                 | InProgress
                  | Closed
                  deriving (Show, Eq)
 

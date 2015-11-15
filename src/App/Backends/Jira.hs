@@ -38,8 +38,9 @@ instance IsIssue Jira.Issue where
     Right i -> i
 
   issueStatus issue = case issue^.Jira.iStatus of
-    Jira.Closed -> Closed
-    _           -> Open
+    Jira.Closed     -> Closed
+    Jira.InProgress -> InProgress
+    _               -> Open
 
   issueType issue = issue^.Jira.iType
   summarize = show
