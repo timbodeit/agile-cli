@@ -28,11 +28,12 @@ class (Eq a, IsIssueId (IssueId a), IsIssueType (IssueType a)) => IsIssue a wher
   type IssueType a
   type IssueTypeIdentifier a
 
-  issueId          :: a -> IssueId a
-  issueStatus      :: a -> IssueStatus
-  issueType        :: a -> IssueType a
-  summarize        :: a -> String
-  summarizeOneLine :: a -> String
+  issueId             :: a -> IssueId a
+  issueStatus         :: a -> IssueStatus
+  issueType           :: a -> IssueType a
+  summarize           :: a -> String
+  summarizeOneLine    :: a -> String
+  suggestedBranchName :: a -> String
 
 class IsIssue (Issue backend) => IssueBackend backend where
   type Issue backend

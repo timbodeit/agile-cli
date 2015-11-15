@@ -219,7 +219,7 @@ createBranchForIssueKey issueId issueBackend = withAsyncGitFetch $ \asyncFetch -
   let issueTypeName = show $ issueType issue
   liftIO . putStrLn $ summarize issue
   branchDescription <- liftIO $ toBranchName
-                  <$> askWithDefault (generateName $ summarizeOneLine issue)
+                  <$> askWithDefault (generateName $ suggestedBranchName issue)
                       "Short description for branch?"
   config <- getConfig
   let remote = config^.configRemote

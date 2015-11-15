@@ -44,6 +44,7 @@ instance IsIssue Jira.Issue where
   issueType issue = issue^.Jira.iType
   summarize = show
   summarizeOneLine issue = (issue^.Jira.iKey) ++ ": " ++ (issue^.Jira.iSummary)
+  suggestedBranchName = view Jira.iSummary
 
 instance IssueBackend JiraConfig where
   type Issue JiraConfig = Jira.Issue
