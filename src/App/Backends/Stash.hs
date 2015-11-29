@@ -6,6 +6,8 @@ import           App.Types
 
 import           Control.Lens
 import           Data.List          (intercalate)
+import           Network.HTTP.Types.URI    (urlEncode)
+import           Data.String.Conversions
 
 instance PullRequestBackend StashConfig where
   createPullRequest (BranchName sourceBranch) (BranchName targetBranch) stashConfig =
@@ -13,8 +15,9 @@ instance PullRequestBackend StashConfig where
           ++ "/projects/" ++ stashConfig^.stashProject
           ++ "/repos/" ++ stashConfig^.stashRepository
           ++ "/pull-requests?create"
-          ++ "&sourceBranch=" ++ sourceBranch
-          ++ "&targetBranch=" ++ targetBranch
-          ++ "&reviewers=" ++ stashConfig^.stashReviewers.to renderArray
+          ++ "&sourceBranch=" ++ urlEncode' sourceBranch
+          ++ "&targetBranch=" ++ urlEncode' targetBranch
+          ++ "&reviewers=" ++ urlEncode' (stashConfig^.stashReviewers.to renderArray)
     where
       renderArray = intercalate "|!|"
+      urlEncode'  = cs . urlEncode True . cs
