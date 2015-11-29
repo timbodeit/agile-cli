@@ -142,27 +142,32 @@ readConfig' = runEitherT $
       []   -> do
         config <- hoistEither $ fromPartialConfig partialConfig
         return (configPath, config)
-      keys -> EitherT $ handleMissingKeys keys configPath partialConfig
+      keys -> EitherT $ handleMissingKeys keys configPath
   where
     missingKeys = missingConfigKeys referenceConfig
     notFoundException =  ConfigException
                          "No config file found. Please try the init command to get started."
 
-handleMissingKeys :: [ConfigKey] -> FilePath -> PartialConfig -> AppIO (FilePath, Config)
-handleMissingKeys keys configPath partialConfig = do
+handleMissingKeys :: [ConfigKey] -> FilePath -> AppIO (FilePath, Config)
+handleMissingKeys keys configPath = do
   putStrLn "There are missing keys in your (combined) config file:"
   forM_ keys $ \key -> putStrLn $ "- " ++ show key
+
   askYesNoWithDefault True ("Fill default values to config at " ++ configPath ++ "?") >>= \case
     False -> error "Please fix your config, then."
-    True  -> let defaultPartialConfig = PartialConfig $ toJSON defaultConfig
-                 completeConfig  = fillMissingConfigKeys defaultPartialConfig partialConfig keys
-                 Right newConfig = fromPartialConfig completeConfig
-             in LBS.writeFile configPath (prettyEncodeConfig newConfig) >> readConfig'
+    True  -> runEitherT $ do
+      rawConfig <- liftIO $ readFile configPath
+      existingPartialConfig <- hoistEither $ parsePartialConfig configPath rawConfig
+
+      let defaultPartialConfig = PartialConfig $ toJSON defaultConfig
+          filledConfig         = fillMissingConfigKeys defaultPartialConfig existingPartialConfig keys
+      liftIO $ LBS.writeFile configPath (prettyEncode filledConfig)
+      EitherT readConfig'
 
 writeConfig :: Config -> AppM ()
 writeConfig config = do
   path <- getConfigPath
-  liftIO $ LBS.writeFile path (prettyEncodeConfig config)
+  liftIO $ LBS.writeFile path (prettyEncode config)
 
 searchConfigParts :: AppIO [ConfigPart]
 searchConfigParts = getCurrentDirectory >>= searchConfigParts'
@@ -217,10 +222,10 @@ normalizeConfigPart c@(ConfigPart configPath partialConfig) =
     writeKeyPath = writeConfigKey keyPathConfigKey partialConfig . String . cs
     keyPathConfigKey = configKey "JiraConfig.OAuthSigningKeyPath"
 
-prettyEncodeConfig :: Config -> LBS.ByteString
-prettyEncodeConfig config =
+prettyEncode :: ToJSON a => a -> LBS.ByteString
+prettyEncode o =
   let prettyConfig = P.defConfig { P.confIndent = 2, P.confCompare = compare }
-  in  P.encodePretty' prettyConfig config
+  in  P.encodePretty' prettyConfig o
 
 referenceConfig :: PartialConfig
 referenceConfig = PartialConfig $ toJSON emptyConfig
