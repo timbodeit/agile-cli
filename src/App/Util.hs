@@ -89,6 +89,10 @@ ma <||> mb = do
   then mb
   else ma
 
+infixl 3 <|||>
+(<|||>) :: (MonadError e m) => m a -> m a -> m a
+ma <|||> mb = ma `catchError` const mb
+
 -- String handling
 
 trim :: String -> String

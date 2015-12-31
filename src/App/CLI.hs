@@ -12,7 +12,7 @@ import           App.Config
 import           App.ConfigBuilder
 import           App.Git                    (BranchName (..), BranchStatus (..),
                                              IsBranchName, RemoteBranchName,
-                                             WorkingCopyStatus (..),
+                                             WorkingCopyStatus (..), liftGit,
                                              toBranchString, (</>))
 import qualified App.Git                    as Git
 import           App.InitialSetup
@@ -331,11 +331,6 @@ runApp' :: AppM a -> IO (Either AppException a)
 runApp' m = runEitherT $ do
   (configPath, config) <- EitherT readConfig'
   EitherT $ runApp configPath config m
-
-liftGit :: Git.GitM a -> AppM a
-liftGit m = liftEitherIO $ mapLeft convertException <$> Git.runGit m
-  where
-    convertException (Git.GitException s) = GitException s
 
 -- Branch Config Helpers
 

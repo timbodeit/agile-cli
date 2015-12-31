@@ -16,7 +16,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     App.Backends.Jira
+  exposed-modules:     App.Backends.Github
+                     , App.Backends.Jira
                      , App.Backends.Jira.Parsers
                      , App.Backends.Stash
                      , App.Backends.Types

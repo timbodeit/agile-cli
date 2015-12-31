@@ -1,12 +1,14 @@
 {-# LANGUAGE Rank2Types #-}
 
-module App.Backends ( module App.Backends.Jira
+module App.Backends ( module App.Backends.Github
+                    , module App.Backends.Jira
                     , module App.Backends.Stash
                     , module App.Backends.Types
                     , withIssueBackend
                     , withPullRequestBackend
                     ) where
 
+import           App.Backends.Github
 import           App.Backends.Jira
 import           App.Backends.Stash
 import           App.Backends.Types

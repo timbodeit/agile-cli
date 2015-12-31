@@ -3,6 +3,7 @@ import qualified IntegrationTests
 import qualified ParserTests
 import qualified UtilTests
 import qualified Git.BranchParserTests
+import qualified Github.RepositoryTests
 
 import           Test.Framework
 
@@ -16,3 +17,4 @@ tests =
   ++ ConfigTests.tests
   ++ IntegrationTests.tests
   ++ Git.BranchParserTests.tests
+  ++ Github.RepositoryTests.tests

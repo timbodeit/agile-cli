@@ -32,6 +32,7 @@ data JiraConfig = JiraConfig
 makeLenses ''JiraConfig
 
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 5
+                            , omitNothingFields = True
                             } ''JiraConfig)
 
 data StashConfig = StashConfig
@@ -44,17 +45,19 @@ data StashConfig = StashConfig
 makeLenses ''StashConfig
 
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 6
+                            , omitNothingFields = True
                             } ''StashConfig)
 
 data GithubConfig = GithubConfig
-  { _githubUsername   :: String
-  , _githubRepo       :: String
+  { _githubUsername   :: Maybe String
+  , _githubRepo       :: Maybe String
   , _githubOAuthToken :: String
   } deriving (Show, Eq)
 
 makeLenses ''GithubConfig
 
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 7
+                            , omitNothingFields = True
                             } ''GithubConfig)
 
 data Config = Config
@@ -71,6 +74,7 @@ data Config = Config
 makeLenses ''Config
 
 $(deriveJSON defaultOptions { fieldLabelModifier = drop 7
+                            , omitNothingFields = True
                             } ''Config)
 
 data AppException = JiraApiException JiraException

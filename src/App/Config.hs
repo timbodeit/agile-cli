@@ -50,8 +50,8 @@ defaultStashConfig = StashConfig
 
 defaultGithubConfig :: GithubConfig
 defaultGithubConfig = GithubConfig
-  { _githubUsername   = "your_username"
-  , _githubRepo       = "myrepo"
+  { _githubUsername   = Nothing
+  , _githubRepo       = Nothing
   , _githubOAuthToken = ""
   }
 
@@ -106,8 +106,8 @@ emptyConfig = Config
                                           , _stashRepository = ""
                                           , _stashReviewers  = []
                                           }
-  , _configGithubConfig     = GithubConfig { _githubUsername   = ""
-                                           , _githubRepo       = ""
+  , _configGithubConfig     = GithubConfig { _githubUsername   = Nothing
+                                           , _githubRepo       = Nothing
                                            , _githubOAuthToken = ""
                                            }
   }
