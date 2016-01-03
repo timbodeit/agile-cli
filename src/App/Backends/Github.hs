@@ -151,6 +151,26 @@ issueRepositoryRef = do
       (False, Just parentRepo) -> parentRepo
       _                        -> repoRef
 
+instance PullRequestBackend GithubConfig where
+  createPullRequest (BranchName sourceBranch) (BranchName targetBranch) _ = do
+    repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef
+    repo <- fetchRepo repoRef
+
+    GithubRepoRef baseOwner _ <- case forkedFromRepoRef repo of
+      Nothing            -> return repoRef
+      Just parentRepoRef -> do
+        -- Ask the user whether to use the parent repo
+        useParent <- liftIO . askYesNoWithDefault True $
+          "The repository " ++ show repoRef ++ " is forked from " ++ show parentRepoRef ++
+          ". Do you want to target the parent repository?"
+
+        return $ if useParent
+                 then parentRepoRef
+                 else repoRef
+
+    return $ "https://github.com/" ++ baseOwner ++ "/" ++ repo' ++
+             "/compare/" ++ targetBranch ++ "..." ++ owner ++ ":" ++ sourceBranch
+
 currentRepositoryRef :: AppM GithubRepoRef
 currentRepositoryRef = do
   config <- getConfig
