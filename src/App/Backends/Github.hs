@@ -70,17 +70,17 @@ instance IssueBackend GithubConfig where
   type IssueCreationData GithubConfig = GH.NewIssue
 
   createIssue creationData ghConfig = do
-    GithubRepoRef owner repo <- currentRepositoryRef
+    GithubRepoRef owner repo <- issueRepositoryRef
     let auth = githubAuth ghConfig
     issue <- liftGithubIO $ GH.createIssue auth owner repo creationData
     return $ issueId issue
 
   getIssueById issueId _ = do
-    repoRef <- currentRepositoryRef
+    repoRef <- issueRepositoryRef
     fetchIssue repoRef issueId
 
   makeIssueTransition (GithubIssueId issueNumber) transition ghConfig = do
-    GithubRepoRef owner repo <- currentRepositoryRef
+    GithubRepoRef owner repo <- issueRepositoryRef
     let auth = githubAuth ghConfig
     let edit = GH.EditIssue Nothing Nothing Nothing (Just transition) Nothing Nothing
     void . liftGithubIO $
@@ -115,7 +115,7 @@ instance IssueBackend GithubConfig where
     when optionsSelected $
       liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
-    searchString <- issueSearchString s <$> currentRepositoryRef
+    searchString <- issueSearchString s <$> issueRepositoryRef
     searchResult <- liftGithubIO $ GH.searchIssues searchString
     return $ GH.searchIssuesIssues searchResult
     where
@@ -125,7 +125,7 @@ instance IssueBackend GithubConfig where
     when optionsSelected $
       liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
-    repoRef@(GithubRepoRef owner repo) <- currentRepositoryRef
+    repoRef@(GithubRepoRef owner repo) <- issueRepositoryRef
     let searchString = issueSearchString s repoRef
     return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?" ++ searchString
     where
@@ -134,11 +134,22 @@ instance IssueBackend GithubConfig where
   testBackend _ = do
     GithubRepoRef owner repo <- currentRepositoryRef
     liftIO . putStrLn $ "Using repository: " ++ owner ++ "/" ++ repo
-    liftGithubIO $ GH.userRepo owner repo
-    liftIO $ putStrLn "Config seems ok"
+    void . liftGithubIO $ GH.userRepo owner repo
 
 issueSearchString :: String -> GithubRepoRef -> String
 issueSearchString s (GithubRepoRef owner repo) = "q=" ++ (urlEncode $ s ++ " repo:" ++ owner ++ "/" ++ repo)
+
+issueRepositoryRef :: AppM GithubRepoRef
+issueRepositoryRef = do
+  repoRef <- currentRepositoryRef
+  repo <- fetchRepo repoRef
+  let hasIssues = fromMaybe False $ GH.repoHasIssues repo
+  let mParentRepo = forkedFromRepoRef repo
+
+  return $
+    case (hasIssues, mParentRepo) of
+      (False, Just parentRepo) -> parentRepo
+      _                        -> repoRef
 
 currentRepositoryRef :: AppM GithubRepoRef
 currentRepositoryRef = do
@@ -173,6 +184,12 @@ extractRepository url = do
 
   GithubRepoRef <$> user <*> repo
 
+forkedFromRepoRef :: GH.Repo -> Maybe GithubRepoRef
+forkedFromRepoRef repo = do
+  guard =<< GH.repoFork repo
+  parent <- GH.repoParent repo
+  return $ fromRepoRef parent
+
 githubAuth :: GithubConfig -> GH.GithubAuth
 githubAuth = GH.GithubOAuth . view githubOAuthToken
 
@@ -188,3 +205,6 @@ liftGithub = mapLeft (IOException . show)
 
 liftGithubIO :: IO (Either GH.Error a) -> AppM a
 liftGithubIO = liftEitherIO . fmap liftGithub
+
+fromRepoRef :: GH.RepoRef -> GithubRepoRef
+fromRepoRef (GH.RepoRef owner repo) = GithubRepoRef (GH.githubOwnerLogin owner) repo
