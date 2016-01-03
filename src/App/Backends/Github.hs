@@ -23,13 +23,17 @@ import qualified Github.Search             as GH
 import           Text.Read
 import           Text.RegexPR
 
-data GithubRepoRef = GithubRepoRef String String deriving (Eq, Show)
+data GithubRepoRef = GithubRepoRef String String deriving Eq
+
+instance Show GithubRepoRef where
+  show (GithubRepoRef owner repo) = owner ++ "/" ++ repo
 
 newtype GithubIssueId = GithubIssueId { unGithubIssueId :: Int } deriving Eq
-newtype GithubIssueType = GithubIssueType { unGithubIssueType :: String } deriving Eq
 
 instance Show GithubIssueId where
   show = show . unGithubIssueId
+
+newtype GithubIssueType = GithubIssueType { unGithubIssueType :: String } deriving Eq
 
 instance Show GithubIssueType where
   show = show . unGithubIssueType

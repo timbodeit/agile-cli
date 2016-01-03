@@ -88,8 +88,10 @@ runCLI options = case options^.cliCommand of
     run $ withIssueId issueString reopen
   CheckoutCommand issueString ->
     run $ withIssueId (Just issueString) checkoutBranchForIssueKey
-  CreatePullRequestCommand issueString ->
-    run $ withIssueId issueString $ const . openPullRequest
+  CreatePullRequestCommand issueString -> run $ do
+    let getIssueBranch = withIssueId issueString $ const . branchForIssueKey
+    sourceBranch <- getIssueBranch <|||> getCurrentBranch'
+    openPullRequest sourceBranch
   FinishCommand finishType issueString ->
     run $ withIssueId issueString $
     case finishType of
@@ -147,7 +149,7 @@ finishIssueWithPullRequest issueId issueBackend = do
 finishIssueWithPullRequest' :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithPullRequest' issueId issueBackend = do
   resolve issueId issueBackend
-  openPullRequest issueId
+  openPullRequest =<< branchForIssueKey issueId
 
 finishIssueWithMerge :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithMerge issueId issueBackend = do
@@ -246,11 +248,10 @@ createBranchForIssueKey issueId issueBackend = withAsyncGitFetch $ \asyncFetch -
     toBranchName = map (\c -> if isSpace c then '-' else c)
     generateName = toBranchName . map toLower . take 30
 
-openPullRequest :: IsIssueId i => i -> AppM ()
-openPullRequest issueId = do
+openPullRequest :: BranchName -> AppM ()
+openPullRequest source = do
   config <- getConfig
-  source <- branchForIssueKey issueId
-  target <- liftGit $ config ^. localDevelopBranch
+  target <- liftGit $ config^.localDevelopBranch
 
   url    <- withPullRequestBackend $ createPullRequest source target
   openInBrowser url
@@ -278,10 +279,8 @@ resolveSearch s = do
 
 currentIssueKey :: IssueBackend i => i -> AppM (IssueId (Issue i))
 currentIssueKey backend = do
-  branch <- liftGit Git.getCurrentBranch `orThrowM` branchException
+  branch <- getCurrentBranch'
   extractIssueId branch backend
-  where
-    branchException = UserInputException "You are not on a branch"
 
 branchForIssueKey :: IsIssueId i => i -> AppM BranchName
 branchForIssueKey issueKey = do
@@ -299,11 +298,9 @@ branchForIssueKey issueKey = do
 
 withIssueId :: Maybe String -> (forall i. IssueBackend i => IssueId (Issue i) -> i -> AppM a) -> AppM a
 withIssueId Nothing k = withIssueBackend $ \backend -> do
-  branch  <- liftGit Git.getCurrentBranch `orThrowM` branchException
+  branch  <- getCurrentBranch'
   issueId <- extractIssueId branch backend
   k issueId backend
-  where
-    branchException = UserInputException "You are not on a branch"
 withIssueId (Just issueString) k = withIssueBackend $ \backend -> do
   issueId <- parseIssueId issueString backend
   k issueId backend
@@ -318,6 +315,13 @@ withIssue s k = withIssueId s $ \issueId backend -> do
 
 matchesIssueKey :: (IsIssueId i, IsBranchName b) => i -> b -> Bool
 matchesIssueKey issueKey branch = show issueKey `isInfixOf` toBranchString branch
+
+-- Git Helpers
+
+getCurrentBranch' :: AppM BranchName
+getCurrentBranch' = liftGit Git.getCurrentBranch `orThrowM` branchException
+  where
+    branchException = UserInputException "You are not on a branch"
 
 -- App Monad
 
