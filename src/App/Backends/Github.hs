@@ -164,7 +164,7 @@ currentRepositoryRef = do
 
 extractRepository :: String -> Maybe GithubRepoRef
 extractRepository url = do
-  guard $ "github" `isInfixOf` url
+  guard $ "github.com" `isInfixOf` url
 
   let match  = matchRegexPR "([^/:]+)/([^/]+?)(\\.git)?$" url
       groups = match^._Just._2

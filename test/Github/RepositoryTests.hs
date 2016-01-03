@@ -31,6 +31,9 @@ sampleRepositoryUrlsTest = mapM_ testSample samples
               , ( "git@github.com/dsmatter/"
                 , Nothing
                 )
+              , ( "https://example.com/github/repo"
+                , Nothing
+                )
               , ( "https://github.com/dsmatter/testing-repo.git"
                 , Just (GithubRepoRef "dsmatter" "testing-repo")
                 )
