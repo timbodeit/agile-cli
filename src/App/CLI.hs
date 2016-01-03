@@ -45,9 +45,6 @@ execCLI =
   in execParser parser >>= runCLI
 
 
-issueAction :: IssueBackend b => (b -> AppM a) -> ReaderT b AppM a
-issueAction = ReaderT
-
 runCLI :: CLIOptions -> IO ()
 runCLI options = case options^.cliCommand of
   InitCommand ->
