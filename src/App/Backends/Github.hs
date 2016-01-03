@@ -3,6 +3,7 @@
 module App.Backends.Github where
 
 import           App.Backends.Types
+import           App.CLI.Options
 import           App.Git                   hiding (GitException)
 import           App.Types
 import           App.Util
@@ -14,9 +15,11 @@ import           Control.Monad.Error.Class
 import           Control.Monad.IO.Class
 import           Data.Either.Combinators
 import           Data.List
+import           Data.Maybe
 import qualified Github.Auth               as GH
 import qualified Github.Issues             as GH
 import qualified Github.Repos              as GH
+import qualified Github.Search             as GH
 import           Text.Read
 import           Text.RegexPR
 
@@ -45,7 +48,20 @@ instance IsIssue GH.Issue where
   issueId = GithubIssueId . GH.issueNumber
   issueStatus = maybe Open (const Closed) . GH.issueClosedAt
   issueType = GithubIssueType . GH.issueState
-  summarize = show
+
+  summarize issue = unlines'
+    [ "Issue Number: " ++ show (GH.issueNumber issue)
+    , "ID: " ++ show (GH.issueId issue)
+    , "Title: " ++ GH.issueTitle issue
+    , "State: " ++ GH.issueState issue
+    , "Labels: " ++ renderLabels (GH.issueLabels issue)
+    , "Assignee: " ++ renderAssignee (GH.issueAssignee issue)
+    , "Body:\n" ++ fromMaybe "" (GH.issueBody issue)
+    ]
+    where
+      renderLabels   = intercalate ", " . map GH.labelName
+      renderAssignee = maybe "-" GH.githubOwnerLogin
+
   summarizeOneLine issue = show (GH.issueNumber issue) ++ ": " ++ GH.issueTitle issue
   suggestedBranchName = GH.issueTitle
 
@@ -95,15 +111,34 @@ instance IssueBackend GithubConfig where
   makeIssueCreationData issueType summary _ =
     GH.NewIssue summary Nothing Nothing Nothing (Just [issueType])
 
-  searchIssues _ _ = error "Not implemented: search issues"
+  searchIssues options s _ = do
+    when optionsSelected $
+      liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
-  searchUrl options s jiraConfig = error "Not implemented: search issues"
+    searchString <- issueSearchString s <$> currentRepositoryRef
+    searchResult <- liftGithubIO $ GH.searchIssues searchString
+    return $ GH.searchIssuesIssues searchResult
+    where
+      optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
+
+  searchUrl options s _ = do
+    when optionsSelected $
+      liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
+
+    repoRef@(GithubRepoRef owner repo) <- currentRepositoryRef
+    let searchString = issueSearchString s repoRef
+    return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?" ++ searchString
+    where
+      optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
 
   testBackend _ = do
     GithubRepoRef owner repo <- currentRepositoryRef
     liftIO . putStrLn $ "Using repository: " ++ owner ++ "/" ++ repo
     liftGithubIO $ GH.userRepo owner repo
     liftIO $ putStrLn "Config seems ok"
+
+issueSearchString :: String -> GithubRepoRef -> String
+issueSearchString s (GithubRepoRef owner repo) = "q=" ++ (urlEncode $ s ++ " repo:" ++ owner ++ "/" ++ repo)
 
 currentRepositoryRef :: AppM GithubRepoRef
 currentRepositoryRef = do
