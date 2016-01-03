@@ -1,9 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module App.Util where
 
 import           App.Types
 
+import           qualified Data.ByteString as BS
+import           Network.HTTP.Types.URI    (urlEncode)
+import           Data.String.Conversions
 import           System.Process
 import           Control.Applicative
 import           Control.Exception
@@ -177,3 +181,7 @@ unlines' l  = init (unlines l)
 -- Match regex with string and return the first group match
 (=~~) :: String -> String -> Maybe String
 s =~~ regex = matchRegexPR regex s & view (_Just._2.to (lookup 1))
+
+-- URL-encode a given string
+urlEncode :: (ConvertibleStrings a BS.ByteString, ConvertibleStrings BS.ByteString a) => a -> a
+urlEncode = cs . Network.HTTP.Types.URI.urlEncode True . cs

@@ -1,12 +1,12 @@
 module App.Backends.Stash (PullRequestBackend(..)) where
 
 import           App.Backends.Types
-import           App.Git.Branch     (BranchName (..))
+import           App.Git.Branch          (BranchName (..))
 import           App.Types
+import           App.Util
 
 import           Control.Lens
-import           Data.List          (intercalate)
-import           Network.HTTP.Types.URI    (urlEncode)
+import           Data.List               (intercalate)
 import           Data.String.Conversions
 
 instance PullRequestBackend StashConfig where
@@ -15,9 +15,8 @@ instance PullRequestBackend StashConfig where
           ++ "/projects/" ++ stashConfig^.stashProject
           ++ "/repos/" ++ stashConfig^.stashRepository
           ++ "/pull-requests?create"
-          ++ "&sourceBranch=" ++ urlEncode' sourceBranch
-          ++ "&targetBranch=" ++ urlEncode' targetBranch
-          ++ "&reviewers=" ++ urlEncode' (stashConfig^.stashReviewers.to renderArray)
+          ++ "&sourceBranch=" ++ urlEncode sourceBranch
+          ++ "&targetBranch=" ++ urlEncode targetBranch
+          ++ "&reviewers=" ++ urlEncode (stashConfig^.stashReviewers.to renderArray)
     where
       renderArray = intercalate "|!|"
-      urlEncode'  = cs . urlEncode True . cs

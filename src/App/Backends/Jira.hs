@@ -17,7 +17,6 @@ import           Control.Monad.Reader
 import           Data.List                 (find, intercalate)
 import           Data.String.Conversions
 import qualified Jira.API                  as Jira
-import           Network.HTTP.Types.URI    (urlEncode)
 import           Text.Parsec               (parse)
 import           Text.Read
 import           Text.RegexPR
@@ -65,9 +64,7 @@ instance IssueBackend JiraConfig where
   searchUrl options s jiraConfig = return $
     let jql     = toJql options s jiraConfig
         baseUrl = jiraConfig^.jiraBaseUrl
-    in  baseUrl ++ "/issues/?jql=" ++ urlEncode' jql
-    where
-      urlEncode' = cs . urlEncode True . cs
+    in  baseUrl ++ "/issues/?jql=" ++ urlEncode jql
 
   parseIssueId = const . parseIssueKey
 
