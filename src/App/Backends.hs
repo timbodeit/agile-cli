@@ -15,10 +15,17 @@ import           App.Backends.Types
 import           App.Types
 
 import           Control.Lens
-import           Control.Monad.Reader
+import           Control.Monad.Except
 
 withPullRequestBackend :: (forall p. PullRequestBackend p => p -> AppM a) -> AppM a
 withPullRequestBackend f = f =<< view configStashConfig <$> getConfig
 
 withIssueBackend :: (forall i. IssueBackend i => i -> AppM a) -> AppM a
-withIssueBackend f = f =<< view configJiraConfig <$> getConfig
+withIssueBackend f = do
+  config   <- getConfig
+  isGithub <- testSuccess currentRepositoryRef
+  if isGithub
+  then f $ config^.configGithubConfig
+  else f $ config^.configJiraConfig
+  where
+    testSuccess m = fmap (const True) m `catchError` \_ -> return False
