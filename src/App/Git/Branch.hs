@@ -83,7 +83,8 @@ getCurrentBranch =
     branch -> Just <$> parseBranchName' branch
 
 getCurrentBranch' :: GitM BranchName
-getCurrentBranch' = liftMaybe (GitException "Cannot get current branch") =<< getCurrentBranch
+getCurrentBranch' = getCurrentBranch
+                    `orThrowM` GitException "Cannot get current branch"
 
 getLocalBranches :: GitM [BranchName]
 getLocalBranches = branchesFromOutput <$>
@@ -176,7 +177,7 @@ branchStatus remote issueId = do
     containsIssueId = isInfixOf issueId
 
 parseBranchName' :: IsBranchName b => String -> GitM b
-parseBranchName' name = liftMaybe ex $ parseBranchName name
+parseBranchName' name = parseBranchName name `orThrow` ex
   where
     ex = GitException $ "Invalid branch name: " ++ name
 

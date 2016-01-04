@@ -20,7 +20,7 @@ remoteUrl remote = do
                    filter lineCorrespondsToRemote $
                    lines (cs output)
 
-  liftMaybe urlException $ safeHead candidates
+  safeHead candidates `orThrow` urlException
   where
     lineCorrespondsToRemote line =
       maybe False (== remote) $ safeHead (words line)
