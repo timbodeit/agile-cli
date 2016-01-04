@@ -253,7 +253,7 @@ openPullRequest source = do
   config <- getConfig
   target <- liftGit $ config^.localDevelopBranch
 
-  url    <- withPullRequestBackend $ createPullRequest source target
+  url    <- withPullRequestBackend $ createPullRequestUrl source target
   openInBrowser url
 
 withAsyncGitFetch :: (Async () -> AppM b) -> AppM b
@@ -369,7 +369,7 @@ handleAppException exception = do
         putStrLn "Bad request to JIRA API:"
         print info
         -- Show available issue types if issuetype key is the the error map
-        -- when (hasErrorField "issuetype" info) showIssueTypes
+        when (hasErrorField "issuetype" info) showIssueTypes
 
   exitWith $ ExitFailure 1
   where

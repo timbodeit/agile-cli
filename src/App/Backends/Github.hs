@@ -42,7 +42,7 @@ instance IsIssueId GithubIssueId where
 
 instance IsIssueType GithubIssueType where
   issueTypeName = unGithubIssueType
-  issueTypeDescription _ = ""
+  issueTypeDescription _ = "-"
 
 instance IsIssue GH.Issue where
   type IssueId GH.Issue = GithubIssueId
@@ -156,7 +156,7 @@ issueRepositoryRef = do
       _                        -> repoRef
 
 instance PullRequestBackend GithubConfig where
-  createPullRequest (BranchName sourceBranch) (BranchName targetBranch) _ = do
+  createPullRequestUrl (BranchName sourceBranch) (BranchName targetBranch) _ = do
     repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef
     repo <- fetchRepo repoRef
 

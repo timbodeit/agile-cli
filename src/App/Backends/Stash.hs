@@ -10,7 +10,7 @@ import           Data.List               (intercalate)
 import           Data.String.Conversions
 
 instance PullRequestBackend StashConfig where
-  createPullRequest (BranchName sourceBranch) (BranchName targetBranch) stashConfig =
+  createPullRequestUrl (BranchName sourceBranch) (BranchName targetBranch) stashConfig =
     return $ stashConfig^.stashBaseUrl
           ++ "/projects/" ++ stashConfig^.stashProject
           ++ "/repos/" ++ stashConfig^.stashRepository

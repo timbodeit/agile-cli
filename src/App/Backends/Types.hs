@@ -8,8 +8,9 @@ import           App.Types
 import           App.CLI.Options
 
 -- Pull Requests
+
 class PullRequestBackend a where
-  createPullRequest :: BranchName -> BranchName -> a -> AppM String
+  createPullRequestUrl :: BranchName -> BranchName -> a -> AppM String
 
 -- Issue Management
 
