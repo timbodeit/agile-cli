@@ -61,9 +61,9 @@ $(deriveJSON defaultOptions { fieldLabelModifier = drop 7
                             } ''GithubConfig)
 
 data Config = Config
-  { _configJiraConfig          :: JiraConfig
-  , _configStashConfig         :: StashConfig
-  , _configGithubConfig        :: GithubConfig
+  { _configJiraConfig          :: Maybe JiraConfig
+  , _configStashConfig         :: Maybe StashConfig
+  , _configGithubConfig        :: Maybe GithubConfig
   , _configDevelopBranch       :: String
   , _configRemoteName          :: String
   , _configDefaultBranchPrefix :: String

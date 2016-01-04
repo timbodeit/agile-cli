@@ -11,7 +11,7 @@ import           App.CLI.Options
 import           App.Config
 import           App.ConfigBuilder
 import           App.Git                    (BranchName (..), BranchStatus (..),
-                                             IsBranchName, RemoteBranchName,
+                                             IsBranchName,
                                              WorkingCopyStatus (..), liftGit,
                                              toBranchString, (</>))
 import qualified App.Git                    as Git
@@ -28,7 +28,6 @@ import           Control.Monad.Reader
 import           Control.Monad.Trans.Either
 import           Data.Bool
 import           Data.Char
-import           Data.Either.Combinators
 import           Data.List
 import qualified Data.Map                   as Map
 import           Data.String.Conversions
@@ -60,7 +59,7 @@ runCLI options = case options^.cliCommand of
   OpenCommand issueString ->
     run $ withIssueId issueString $ \issueId -> openInBrowser <=< issueUrl issueId
   SearchCommand searchOptions s -> run $ withIssueBackend $ \issueBackend -> do
-    s' <- resolveSearch s
+    s' <- resolveSearch s issueBackend
 
     if searchOnWebsite searchOptions
     then
@@ -113,12 +112,7 @@ startWorkOnIssue :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 startWorkOnIssue issueId issueBackend = do
   branch <- createBranchForIssueKey issueId issueBackend
   liftGit $ Git.checkoutBranch branch
-  startProgress'
-  where
-    startProgress' = do
-      issue <- getIssueById issueId issueBackend
-      when (issueStatus issue /= InProgress) $
-        startProgress issueId issueBackend
+  startProgress' issueId issueBackend
 
 finishIssueWithPullRequest :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithPullRequest issueId issueBackend = do
@@ -154,7 +148,8 @@ finishIssueWithPullRequest' issueId issueBackend = do
 finishIssueWithMerge :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
 finishIssueWithMerge issueId issueBackend = do
   config <- getConfig
-  let transition = config^.configJiraConfig.jiraFinishMergeTransition
+  jiraConfig <- takeJiraConfig config
+  let transition = jiraConfig^.jiraFinishMergeTransition
   makeIssueTransition issueId transition issueBackend
 
   source <- branchForIssueKey issueId
@@ -268,13 +263,13 @@ gitFetch = do
 
 parseIssueType' :: IssueBackend ib => String -> ib -> AppM (IssueTypeIdentifier (Issue ib))
 parseIssueType' typeName issueBackend = do
-  aliasMap <- view (configJiraConfig.jiraIssueTypeAliases) <$> getConfig
+  aliasMap <- getIssueTypeAliasMap issueBackend
   let resolvedName = Map.findWithDefault typeName typeName aliasMap
   return $ toIssueTypeIdentifier resolvedName issueBackend
 
-resolveSearch :: String -> AppM String
-resolveSearch s = do
-  searchMap <- view (configJiraConfig.jiraSearchAliases) <$> getConfig
+resolveSearch :: IssueBackend ib => String -> ib -> AppM String
+resolveSearch s issueBackend = do
+  searchMap <- getSearchAliasMap issueBackend
   return . trim $ Map.findWithDefault s s searchMap
 
 currentIssueKey :: IssueBackend i => i -> AppM (IssueId (Issue i))
@@ -289,12 +284,11 @@ branchForIssueKey issueKey = do
   where
     branchException = UserInputException $ "Branch for issue not found: " ++ show issueKey
 
--- startProgress' :: IssueKey -> AppM ()
--- startProgress' issueKey = do
---   issue <- liftJira $ getIssue issueKey
---   case issue^.iStatus of
---     InProgress -> return ()
---     _          -> liftJira $ startProgress issueKey
+startProgress' :: IssueBackend ib => IssueId (Issue ib) -> ib -> AppM ()
+startProgress' issueId backend = do
+  issue <- getIssueById issueId backend
+  when (issueStatus issue /= InProgress) $
+    startProgress issueId backend
 
 withIssueId :: Maybe String -> (forall i. IssueBackend i => IssueId (Issue i) -> i -> AppM a) -> AppM a
 withIssueId Nothing k = withIssueBackend $ \backend -> do
@@ -340,11 +334,6 @@ configRemote = configRemoteName.to Git.RemoteName
 
 localDevelopBranch :: IsBranchName b => Getter Config (Git.GitM b)
 localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
-
-remoteDevelopBranch :: Config -> Git.GitM RemoteBranchName
-remoteDevelopBranch config = do
-  devBranch <- view localDevelopBranch config
-  return $ (config^.configRemote) </> devBranch
 
 -- Exception Handling
 

@@ -43,14 +43,14 @@ hoistMaybe = MaybeT . return
 onError :: (MonadError e m) => m a -> m a -> m a
 onError = flip catchError . const
 
+orElse :: (MonadError e m) => m a -> m a -> m a
+orElse = flip onError
+
 orThrow :: (MonadError e m) => Maybe a -> e -> m a
 orThrow = flip liftMaybe
 
 orThrowM :: (MonadError e m) => m (Maybe a) -> e -> m a
 orThrowM m e = m >>= liftMaybe e
-
-orElse :: (MonadError e m) => m a -> m a -> m a
-orElse m d = m `catchError` const d
 
 attempt :: (Functor m, MonadError e m) => m a -> m ()
 attempt m = void m `orElse` return ()
@@ -63,6 +63,12 @@ liftEitherIO ioe = liftIO ioe >>= either throwError return
 
 liftEitherM :: (MonadError e m) => m (Either e a) -> m a
 liftEitherM = (>>= either throwError return)
+
+mapError :: (Monad m, MonadError e m) => (e -> e) -> m a -> m a
+mapError f = (`catchError` throwError . f)
+
+orMap :: (Monad m, MonadError e m) => m a -> (e -> e) -> m a
+orMap = flip mapError
 
 -- Custom operators
 

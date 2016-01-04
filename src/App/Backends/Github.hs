@@ -15,6 +15,7 @@ import           Control.Monad.Error.Class
 import           Control.Monad.IO.Class
 import           Data.Either.Combinators
 import           Data.List
+import qualified Data.Map                  as Map
 import           Data.Maybe
 import qualified Github.Auth               as GH
 import qualified Github.Issues             as GH
@@ -100,7 +101,7 @@ instance IssueBackend GithubConfig where
       Nothing  -> throwError . IOException $ "Could not get issue URL for issue " ++ show issueId
       Just url -> return url
 
-  parseIssueId s _ = liftMaybe ex $ GithubIssueId <$> readMaybe s
+  parseIssueId s _ = GithubIssueId <$> readMaybe s `orThrow` ex
     where ex = IOException $ "Unable to parse issue ID: " ++ s
 
   extractIssueId branch _ = liftMaybe ex $ do
@@ -111,6 +112,8 @@ instance IssueBackend GithubConfig where
   toIssueTypeIdentifier s _ = s
 
   getAvailableIssueTypes _ = return [GithubIssueType "(Any string)"]
+
+  getIssueTypeAliasMap _ = return Map.empty
 
   makeIssueCreationData issueType summary _ =
     GH.NewIssue summary Nothing Nothing Nothing (Just [issueType])
@@ -134,6 +137,8 @@ instance IssueBackend GithubConfig where
     return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?" ++ searchString
     where
       optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
+
+  getSearchAliasMap _ = return Map.empty
 
   testBackend _ = do
     GithubRepoRef owner repo <- currentRepositoryRef
@@ -178,21 +183,21 @@ instance PullRequestBackend GithubConfig where
 currentRepositoryRef :: AppM GithubRepoRef
 currentRepositoryRef = do
   config <- getConfig
-  let ghConfig = config^.configGithubConfig
   let remote   = config^.configRemoteName
-
-  refFromGithubConfig ghConfig <|||> refFromRemote remote
+  case config^.configGithubConfig of
+    Nothing       -> refFromRemote remote
+    Just ghConfig -> refFromGithubConfig ghConfig <|||> refFromRemote remote
   where
     refFromGithubConfig :: GithubConfig -> AppM GithubRepoRef
     refFromGithubConfig ghConfig =
       let ref = GithubRepoRef <$> ghConfig^.githubUsername <*> ghConfig^.githubRepo
-          ex  = IOException "Could not read github repo from config"
-      in  liftMaybe ex ref
+          ex  = ConfigException "Could not read github repo from config"
+      in  ref `orThrow` ex
 
     refFromRemote :: String -> AppM GithubRepoRef
     refFromRemote remote = do
       url <- liftGit $ remoteUrl remote
-      liftMaybe (extractException url) $ extractRepository url
+      extractRepository url `orThrow` extractException url
       where
         extractException url =
           GitException $ "Unable to parse github repository from URL '" ++ url ++ "'"

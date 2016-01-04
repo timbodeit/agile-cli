@@ -86,14 +86,17 @@ instance IssueBackend JiraConfig where
   getAvailableIssueTypes jiraConfig = do
     (Jira.CreateIssueMetadata projectPairs) <- liftJira Jira.getCreateIssueMetadata jiraConfig
     let projectKey = jiraConfig^.jiraProject
-    projectPair <- liftMaybe
-      (ConfigException $ "Project not found: " ++ projectKey) $
-      find (\p -> p^._1.Jira.pKey == projectKey) projectPairs
+    projectPair <- find (\p -> p^._1.Jira.pKey == projectKey) projectPairs
+      `orThrow` (ConfigException $ "Project not found: " ++ projectKey)
     return $ snd projectPair
+
+  getIssueTypeAliasMap jiraConfig = return $ jiraConfig^.jiraIssueTypeAliases
 
   searchIssues options s = runReaderT $ do
     jql <- liftPure $ toJql options s
     liftJira' $ Jira.searchIssues' jql
+
+  getSearchAliasMap jiraConfig = return $ jiraConfig^.jiraSearchAliases
 
   testBackend = liftJira . void $
     Jira.getRaw' "application-properties"

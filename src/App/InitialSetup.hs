@@ -91,8 +91,8 @@ doSetupConfigInteractively = do
                                        , _stashReviewers  = stashReviewers
                                        }
 
-  return $ defaultConfig { _configJiraConfig     = jiraConfig
-                         , _configStashConfig    = stashConfig
+  return $ defaultConfig { _configJiraConfig     = Just jiraConfig
+                         , _configStashConfig    = Just stashConfig
                          , _configDevelopBranch  = developBranch
                          , _configRemoteName     = remoteName
                          , _configBrowserCommand = openCommand
@@ -125,21 +125,22 @@ doSetupFromExistingConfig (configPath, config) =
 
 doInitAuth :: Config -> AppIO Config
 doInitAuth config = runEitherT $ do
-  privateKey  <- EitherT . readPrivateKey $ config^.configJiraConfig.jiraOAuthSigningKeyPath
-  accessToken <- EitherT $ doGetAccessToken privateKey
+  jiraConfig  <- takeJiraConfig config
+  privateKey  <- EitherT . readPrivateKey $ jiraConfig^.jiraOAuthSigningKeyPath
+  accessToken <- EitherT $ doGetAccessToken jiraConfig privateKey
   return $ uncurry updateConfig accessToken
   where
     updateConfig :: BS.ByteString -> BS.ByteString -> Config
     updateConfig token tokenSecret =
-      config & configJiraConfig.jiraOAuthAccessToken  .~ cs token
-             & configJiraConfig.jiraOAuthAccessSecret .~ cs tokenSecret
+      config & configJiraConfig._Just.jiraOAuthAccessToken  .~ cs token
+             & configJiraConfig._Just.jiraOAuthAccessSecret .~ cs tokenSecret
 
-    doGetAccessToken :: PrivateKey -> AppIO (BS.ByteString, BS.ByteString)
-    doGetAccessToken pk = do
+    doGetAccessToken :: JiraConfig -> PrivateKey -> AppIO (BS.ByteString, BS.ByteString)
+    doGetAccessToken jiraConfig pk = do
       manager <- newManager tlsManagerSettings
-      let oauth = J.getOAuth (config^.configJiraConfig.jiraBaseUrl)
-                  (config^.configJiraConfig.jiraOAuthConsumerKey)
-                  pk
+      let oauth = J.getOAuth (jiraConfig^.jiraBaseUrl)
+                             (jiraConfig^.jiraOAuthConsumerKey)
+                             pk
       requestToken <- getTemporaryCredential oauth manager
       let authUrl = authorizeUrl oauth requestToken
       putStrLn "Please open the following link in your browser and log in."
@@ -163,8 +164,8 @@ doInitAuth config = runEitherT $ do
 
 isAuthConfigured :: Config -> Bool
 isAuthConfigured config =
-     config^.configJiraConfig.jiraOAuthAccessToken  /= ""
-  && config^.configJiraConfig.jiraOAuthAccessSecret /= ""
+     config^.configJiraConfig._Just.jiraOAuthAccessToken  /= ""
+  && config^.configJiraConfig._Just.jiraOAuthAccessSecret /= ""
 
 writeConfigTo :: FilePath -> Config -> IO ()
 writeConfigTo path = LBS.writeFile path . prettyEncode

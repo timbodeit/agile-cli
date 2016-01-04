@@ -3,9 +3,10 @@
 
 module App.Backends.Types where
 
+import           App.CLI.Options
 import           App.Git.Branch
 import           App.Types
-import           App.CLI.Options
+import qualified Data.Map        as Map
 
 -- Pull Requests
 
@@ -49,14 +50,16 @@ class IsIssue (Issue backend) => IssueBackend backend where
 
   parseIssueId :: String -> backend -> AppM (IssueId (Issue backend))
   extractIssueId :: BranchName -> backend -> AppM (IssueId (Issue backend))
-  toIssueTypeIdentifier :: String -> backend -> IssueTypeIdentifier (Issue backend)
 
   makeIssueCreationData :: IssueTypeIdentifier (Issue backend) -> String -> backend -> IssueCreationData backend
 
+  toIssueTypeIdentifier :: String -> backend -> IssueTypeIdentifier (Issue backend)
   getAvailableIssueTypes :: backend -> AppM [IssueType (Issue backend)]
+  getIssueTypeAliasMap :: backend -> AppM (Map.Map String String)
 
   searchIssues :: SearchOptions -> String -> backend -> AppM [Issue backend]
   searchUrl    :: SearchOptions -> String -> backend -> AppM String
+  getSearchAliasMap :: backend -> AppM (Map.Map String String)
 
   startProgress :: IssueId (Issue backend)   -> backend -> AppM ()
   startProgress = flip makeIssueTransition "start"

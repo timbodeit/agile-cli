@@ -1,5 +1,6 @@
 module App.Backends.Jira.Parsers where
 
+import           App.Config
 import           App.Types
 import           App.Util
 
@@ -27,7 +28,8 @@ issueKeyParserWithDefaultProject project =
 
 parseIssueKey :: String -> AppM IssueKey
 parseIssueKey s = do
-  project <- view (configJiraConfig.jiraProject) <$> getConfig
+  jiraConfig <- takeJiraConfig =<< getConfig
+  let project = jiraConfig^.jiraProject
   liftEither $ mapLeft (const parseException) $
                parse (issueKeyParserWithDefaultProject project) "" s
   where

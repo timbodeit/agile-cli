@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase    #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module App.Config where
 
@@ -73,9 +74,9 @@ defaultSearchAliases = Map.fromList
 
 defaultConfig :: Config
 defaultConfig = Config
-  { _configJiraConfig          = defaultJiraConfig
-  , _configStashConfig         = defaultStashConfig
-  , _configGithubConfig        = defaultGithubConfig
+  { _configJiraConfig          = Just defaultJiraConfig
+  , _configStashConfig         = Just  defaultStashConfig
+  , _configGithubConfig        = Just  defaultGithubConfig
   , _configDevelopBranch       = "develop"
   , _configRemoteName          = "origin"
   , _configDefaultBranchPrefix = "feature/"
@@ -90,26 +91,9 @@ emptyConfig = Config
   , _configDefaultBranchPrefix = ""
   , _configBranchPrefixMap     = Map.empty
   , _configBrowserCommand      = ""
-  , _configJiraConfig       = JiraConfig { _jiraBaseUrl               = ""
-                                         , _jiraUsername              = ""
-                                         , _jiraProject               = ""
-                                         , _jiraFinishMergeTransition = ""
-                                         , _jiraIssueTypeAliases      = Map.empty
-                                         , _jiraSearchAliases         = Map.empty
-                                         , _jiraOAuthConsumerKey      = ""
-                                         , _jiraOAuthSigningKeyPath   = ""
-                                         , _jiraOAuthAccessToken      = ""
-                                         , _jiraOAuthAccessSecret     = ""
-                                         }
-  , _configStashConfig      = StashConfig { _stashBaseUrl    = ""
-                                          , _stashProject    = ""
-                                          , _stashRepository = ""
-                                          , _stashReviewers  = []
-                                          }
-  , _configGithubConfig     = GithubConfig { _githubUsername   = Nothing
-                                           , _githubRepo       = Nothing
-                                           , _githubOAuthToken = ""
-                                           }
+  , _configJiraConfig          = Nothing
+  , _configStashConfig         = Nothing
+  , _configGithubConfig        = Nothing
   }
 
 -- Config loading
@@ -240,6 +224,20 @@ prettyEncode o =
 
 referenceConfig :: PartialConfig
 referenceConfig = PartialConfig $ toJSON emptyConfig
+
+-- Config Accessors
+
+takeJiraConfig :: (Monad m, MonadError AppException m) => Config -> m JiraConfig
+takeJiraConfig config = liftMaybe ex $ config^.configJiraConfig
+  where ex = ConfigException "JIRA config missing"
+
+takeStashConfig :: (Monad m, MonadError AppException m) => Config -> m StashConfig
+takeStashConfig config = liftMaybe ex $ config^.configStashConfig
+  where ex = ConfigException "Stash config missing"
+
+takeGithubConfig :: (Monad m, MonadError AppException m) => Config -> m GithubConfig
+takeGithubConfig config = liftMaybe ex $ config^.configGithubConfig
+  where ex = ConfigException "Github config missing"
 
 -- For easier reading of maps
 (~>) :: a -> b -> (a, b)
