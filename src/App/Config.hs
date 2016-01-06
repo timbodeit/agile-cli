@@ -96,6 +96,35 @@ emptyConfig = Config
   , _configGithubConfig        = Nothing
   }
 
+emptyJiraConfig :: JiraConfig
+emptyJiraConfig = JiraConfig
+  { _jiraBaseUrl               = ""
+  , _jiraUsername              = ""
+  , _jiraProject               = ""
+  , _jiraFinishMergeTransition = ""
+  , _jiraIssueTypeAliases      = Map.empty
+  , _jiraSearchAliases         = Map.empty
+  , _jiraOAuthConsumerKey      = ""
+  , _jiraOAuthSigningKeyPath   = ""
+  , _jiraOAuthAccessToken      = ""
+  , _jiraOAuthAccessSecret     = ""
+  }
+
+emptyStashConfig :: StashConfig
+emptyStashConfig = StashConfig
+  { _stashBaseUrl    = ""
+  , _stashProject    = ""
+  , _stashRepository = ""
+  , _stashReviewers  = []
+  }
+
+emptyGithubConfig :: GithubConfig
+emptyGithubConfig = GithubConfig
+  { _githubUsername   = Nothing
+  , _githubRepo       = Nothing
+  , _githubOAuthToken = ""
+  }
+
 -- Config loading
 
 -- Since AppM cannot be used without an existing config,
@@ -133,13 +162,12 @@ readConfig' = runEitherT $
   >>= \case
     Nothing -> throwError notFoundException
     Just (ConfigPart (ConfigPath configPath) partialConfig) ->
-      case missingKeys partialConfig of
-      []   -> do
+      case missingConfigKeys (referenceConfigFor partialConfig) partialConfig  of
+      [] -> do
         config <- hoistEither $ fromPartialConfig partialConfig
         return (configPath, config)
       keys -> EitherT $ handleMissingKeys keys configPath
   where
-    missingKeys = missingConfigKeys referenceConfig
     notFoundException =  ConfigException
                          "No config file found. Please try the init command to get started."
 
@@ -222,8 +250,15 @@ prettyEncode o =
   let prettyConfig = P.defConfig { P.confIndent = 2, P.confCompare = compare }
   in  P.encodePretty' prettyConfig o
 
-referenceConfig :: PartialConfig
-referenceConfig = PartialConfig $ toJSON emptyConfig
+referenceConfigFor :: PartialConfig -> PartialConfig
+referenceConfigFor baseConfig = PartialConfig . toJSON $ emptyConfig
+  { _configJiraConfig   = emptyJiraConfig   `ifExists` readBaseConfigKey (configKey "JiraConfig")
+  , _configStashConfig  = emptyStashConfig  `ifExists` readBaseConfigKey (configKey "StashConfig")
+  , _configGithubConfig = emptyGithubConfig `ifExists` readBaseConfigKey (configKey "GithubConfig")
+  }
+  where
+    readBaseConfigKey = flip readConfigKey baseConfig
+    ifExists = fmap . const
 
 -- Config Accessors
 
