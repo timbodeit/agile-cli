@@ -160,15 +160,14 @@ testConfigPartMergingSample =
     assertFailure "Could not merge config parts"
   Just (ConfigPart path partialConfig) ->
     case fromPartialConfig partialConfig of
-    Left _       -> assertFailure "Could not parse partial config"
-    Right config ->
-      assertBool "The merged config should match the sample" $
-         path == "/home/user/project/.agile"
-      && config^.configJiraConfig.jiraBaseUrl  == "http://jira.example.com"
-      && config^.configJiraConfig.jiraProject  == "MY"
-      && config^.configJiraConfig.jiraUsername == "myself"
+      Left e       -> assertFailure $ "Could not parse partial config\n" ++ show e
+      Right config -> do
+        path @?= "/home/user/project/.agile"
+        config^.configJiraConfig._Just.jiraBaseUrl @?= "http://jira.example.com"
+        config^.configJiraConfig._Just.jiraProject @?= "MY"
+        config^.configJiraConfig._Just.jiraUsername @?= "myself"
   where
-    baseConfig = PartialConfig (toJSON emptyConfig)
+    baseConfig = PartialConfig . toJSON $ emptyConfig { _configJiraConfig = Just emptyJiraConfig }
     teamConfig = PartialConfig $ object [ "JiraConfig" ~> object
                                           [ "BaseUrl"  ~> "http://jira.example.com"
                                           , "Username" ~> "nobody"
