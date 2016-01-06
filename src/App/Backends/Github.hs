@@ -65,7 +65,7 @@ instance IsIssue GH.Issue where
     ]
     where
       renderLabels   = intercalate ", " . map GH.labelName
-      renderAssignee = maybe "-" GH.githubOwnerLogin
+      renderAssignee = maybe "-" (GH.untagName . GH.githubOwnerLogin)
 
   summarizeOneLine issue = show (GH.issueNumber issue) ++ ": " ++ GH.issueTitle issue
   suggestedBranchName = GH.issueTitle
@@ -236,4 +236,4 @@ liftGithubIO :: IO (Either GH.Error a) -> AppM a
 liftGithubIO = liftEitherIO . fmap liftGithub
 
 fromRepoRef :: GH.RepoRef -> GithubRepoRef
-fromRepoRef (GH.RepoRef owner repo) = GithubRepoRef (GH.githubOwnerLogin owner) repo
+fromRepoRef (GH.RepoRef owner repo) = GithubRepoRef (GH.untagName $ GH.githubOwnerLogin owner) $ GH.untagName repo
