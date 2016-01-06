@@ -99,6 +99,7 @@ test-suite tests
                      , checkers
                      , directory
                      , filepath
+                     , github
                      , jira-api
                      , lens
                      , parsec
