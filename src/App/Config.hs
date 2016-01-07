@@ -74,9 +74,21 @@ defaultSearchAliases = Map.fromList
 
 defaultConfig :: Config
 defaultConfig = Config
+  { _configJiraConfig          = Nothing
+  , _configStashConfig         = Nothing
+  , _configGithubConfig        = Nothing
+  , _configDevelopBranch       = "develop"
+  , _configRemoteName          = "origin"
+  , _configDefaultBranchPrefix = "feature/"
+  , _configBranchPrefixMap     = Map.fromList [("Bug", "bugfix/")]
+  , _configBrowserCommand      = "open"
+  }
+
+templateConfig :: Config
+templateConfig = Config
   { _configJiraConfig          = Just defaultJiraConfig
-  , _configStashConfig         = Just  defaultStashConfig
-  , _configGithubConfig        = Just  defaultGithubConfig
+  , _configStashConfig         = Just defaultStashConfig
+  , _configGithubConfig        = Just defaultGithubConfig
   , _configDevelopBranch       = "develop"
   , _configRemoteName          = "origin"
   , _configDefaultBranchPrefix = "feature/"

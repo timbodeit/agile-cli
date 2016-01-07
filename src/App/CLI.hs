@@ -43,11 +43,10 @@ execCLI =
   let parser = info (helper <*> optionParser) fullDesc
   in execParser parser >>= runCLI
 
-
 runCLI :: CLIOptions -> IO ()
 runCLI options = case options^.cliCommand of
   InitCommand ->
-    doInitSetup
+    runInitialConfiguration
   ConfigTestCommand ->
     configTest
   ShowIssueTypesCommand ->

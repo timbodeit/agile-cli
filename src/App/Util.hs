@@ -148,19 +148,20 @@ askYesNoWithDefault defaultAnswer question = do
     showDefault = if defaultAnswer then "y" else "n"
     tryAgain    = askYesNoWithDefault defaultAnswer question
 
-runUserChoice :: String -> [(String, IO a)] -> IO a
-runUserChoice question answers = do
+userChoice :: String -> [(String, a)] -> IO a
+userChoice question answers = do
   let question' = unlines' $ question : renderAnswers
   readMaybe <$> ask question' >>= \case
-    Nothing -> tryAgain
-    Just i | i > 0 && i <= length answers -> snd (answers !! (i - 1))
-           | otherwise -> tryAgain
+    Just i | i > 0 && i <= length answers -> return . snd $ answers !! (i - 1)
+    _ -> tryAgain
   where
-    tryAgain = putStrLn "Invalid answer." >> runUserChoice question answers
+    tryAgain = putStrLn "Invalid answer." >> userChoice question answers
     renderAnswers = zipWith renderAnswer [1..] $ map fst answers
-
-    renderAnswer :: Int -> String -> String
     renderAnswer i answer = "[" ++ show i ++ "] " ++ answer
+
+
+runUserChoice :: String -> [(String, IO a)] -> IO a
+runUserChoice question = join . userChoice question
 
 putStr' :: String -> IO ()
 putStr' s = putStr s >> hFlush stdout
