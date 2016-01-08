@@ -27,7 +27,7 @@ remoteUrl remote = do
 
     extractUrl line = line ^? to words . ix 1
 
-    urlException = GitException $ "Cannot get URL of remote: '" ++ remote ++ "''"
+    urlException = GitException $ "Cannot get URL of remote: '" ++ remote ++ "'"
 
     safeHead []    = Nothing
     safeHead (x:_) = Just x
