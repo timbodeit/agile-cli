@@ -65,7 +65,7 @@ instance IsIssue GH.Issue where
     , "State: " ++ cs (GH.issueState issue)
     , "Labels: " ++ renderLabels (GH.issueLabels issue)
     , "Assignee: " ++ renderAssignee (GH.issueAssignee issue)
-    , "Body:\n" ++ (cs $ fromMaybe "" (GH.issueBody issue))
+    , "Body:\n" ++ cs (fromMaybe "" (GH.issueBody issue))
     ]
     where
       renderLabels   = intercalate ", " . map (cs . GH.labelName)
@@ -79,17 +79,17 @@ instance IssueBackend GithubConfig where
   type IssueCreationData GithubConfig = GH.NewIssue
 
   createIssue creationData ghConfig = do
-    GithubRepoRef owner repo <- issueRepositoryRef
+    GithubRepoRef owner repo <- issueRepositoryRef ghConfig
     let auth = githubAuth ghConfig
     issue <- liftGithubIO $ GH.createIssue auth (fromString owner) (fromString repo) creationData
     return $ issueId issue
 
-  getIssueById issueId _ = do
-    repoRef <- issueRepositoryRef
+  getIssueById issueId ghConfig = do
+    repoRef <- issueRepositoryRef ghConfig
     fetchIssue repoRef issueId
 
   makeIssueTransition (GithubIssueId issueNumber) transition ghConfig = do
-    GithubRepoRef owner repo <- issueRepositoryRef
+    GithubRepoRef owner repo <- issueRepositoryRef ghConfig
     let auth = githubAuth ghConfig
     let edit = GH.EditIssue Nothing Nothing Nothing (Just $ cs transition) Nothing Nothing
     void . liftGithubIO $
@@ -122,21 +122,21 @@ instance IssueBackend GithubConfig where
   makeIssueCreationData issueType summary _ =
     GH.NewIssue (cs summary) Nothing Nothing Nothing (Just [cs issueType])
 
-  searchIssues options s _ = do
+  searchIssues options s ghConfig = do
     when optionsSelected $
       liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
-    searchString <- issueSearchString s <$> issueRepositoryRef
+    searchString <- issueSearchString s <$> issueRepositoryRef ghConfig
     searchResult <- liftGithubIO $ GH.searchIssues [("q", Just $ cs searchString)]
     return $ GH.searchIssuesIssues searchResult
     where
       optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
 
-  searchUrl options s _ = do
+  searchUrl options s ghConfig = do
     when optionsSelected $
       liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
-    repoRef@(GithubRepoRef owner repo) <- issueRepositoryRef
+    repoRef@(GithubRepoRef owner repo) <- issueRepositoryRef ghConfig
     let searchString = issueSearchString s repoRef
     return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?q=" ++ urlEncode searchString
     where
@@ -144,17 +144,17 @@ instance IssueBackend GithubConfig where
 
   getSearchAliasMap _ = return Map.empty
 
-  testBackend _ = do
-    GithubRepoRef owner repo <- currentRepositoryRef
+  testBackend ghConfig = do
+    GithubRepoRef owner repo <- currentRepositoryRef $ Just ghConfig
     liftIO . putStrLn $ "Using repository: " ++ owner ++ "/" ++ repo
     void . liftGithubIO $ GH.repository (fromString owner) (fromString repo)
 
 issueSearchString :: String -> GithubRepoRef -> String
 issueSearchString s (GithubRepoRef owner repo) = s ++ " repo:" ++ owner ++ "/" ++ repo
 
-issueRepositoryRef :: AppM GithubRepoRef
-issueRepositoryRef = do
-  repoRef <- currentRepositoryRef
+issueRepositoryRef :: GithubConfig -> AppM GithubRepoRef
+issueRepositoryRef ghConfig = do
+  repoRef <- currentRepositoryRef $ Just ghConfig
   repo <- fetchRepo repoRef
   let hasIssues = fromMaybe False $ GH.repoHasIssues repo
   let mParentRepo = forkedFromRepoRef repo
@@ -165,8 +165,8 @@ issueRepositoryRef = do
       _                        -> repoRef
 
 instance PullRequestBackend GithubConfig where
-  createPullRequestUrl (BranchName sourceBranch) (BranchName targetBranch) _ = do
-    repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef
+  createPullRequestUrl (BranchName sourceBranch) (BranchName targetBranch) ghConfig = do
+    repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef $ Just ghConfig
     repo <- fetchRepo repoRef
 
     GithubRepoRef baseOwner _ <- case forkedFromRepoRef repo of
@@ -184,11 +184,11 @@ instance PullRequestBackend GithubConfig where
     return $ "https://github.com/" ++ baseOwner ++ "/" ++ repo' ++
              "/compare/" ++ targetBranch ++ "..." ++ owner ++ ":" ++ sourceBranch
 
-currentRepositoryRef :: AppM GithubRepoRef
-currentRepositoryRef = do
+currentRepositoryRef :: Maybe GithubConfig -> AppM GithubRepoRef
+currentRepositoryRef mConfig = do
   config <- getConfig
-  let remote   = config^.configRemoteName
-  case config^.configGithubConfig of
+  let remote = config^.configRemoteName
+  case mConfig <|> config^.configGithubConfig of
     Nothing       -> refFromRemote remote
     Just ghConfig -> refFromGithubConfig ghConfig <|||> refFromRemote remote
   where
@@ -205,6 +205,9 @@ currentRepositoryRef = do
       where
         extractException url =
           GitException $ "Unable to parse github repository from URL '" ++ url ++ "'"
+
+currentRepositoryRef' :: AppM GithubRepoRef
+currentRepositoryRef' = currentRepositoryRef Nothing
 
 extractRepository :: String -> Maybe GithubRepoRef
 extractRepository url = do

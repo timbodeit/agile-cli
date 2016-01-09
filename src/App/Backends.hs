@@ -37,7 +37,7 @@ withIssueBackend f = do
     (_, Just githubConfig, _)     -> f githubConfig
 
 isGithubEnv :: AppM Bool
-isGithubEnv = testSuccess currentRepositoryRef
+isGithubEnv = testSuccess currentRepositoryRef'
   where
     testSuccess m = fmap (const True) m `catchError` \_ -> return False
 
