@@ -1,4 +1,5 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
 
 module App.Backends.Github where
 
@@ -17,6 +18,9 @@ import           Data.Either.Combinators
 import           Data.List
 import qualified Data.Map                  as Map
 import           Data.Maybe
+import           Data.Proxy
+import           Data.String               (fromString)
+import           Data.String.Conversions   (cs)
 import qualified Github.Auth               as GH
 import qualified Github.Issues             as GH
 import qualified Github.Repos              as GH
@@ -52,23 +56,23 @@ instance IsIssue GH.Issue where
 
   issueId = GithubIssueId . GH.issueNumber
   issueStatus = maybe Open (const Closed) . GH.issueClosedAt
-  issueType = GithubIssueType . GH.issueState
+  issueType = GithubIssueType . cs . GH.issueState
 
   summarize issue = unlines'
     [ "Issue Number: " ++ show (GH.issueNumber issue)
     , "ID: " ++ show (GH.issueId issue)
-    , "Title: " ++ GH.issueTitle issue
-    , "State: " ++ GH.issueState issue
+    , "Title: " ++ cs (GH.issueTitle issue)
+    , "State: " ++ cs (GH.issueState issue)
     , "Labels: " ++ renderLabels (GH.issueLabels issue)
     , "Assignee: " ++ renderAssignee (GH.issueAssignee issue)
-    , "Body:\n" ++ fromMaybe "" (GH.issueBody issue)
+    , "Body:\n" ++ (cs $ fromMaybe "" (GH.issueBody issue))
     ]
     where
-      renderLabels   = intercalate ", " . map GH.labelName
-      renderAssignee = maybe "-" (GH.untagName . GH.githubOwnerLogin)
+      renderLabels   = intercalate ", " . map (cs . GH.labelName)
+      renderAssignee = maybe "-" (cs . GH.untagName . GH.githubOwnerLogin)
 
-  summarizeOneLine issue = show (GH.issueNumber issue) ++ ": " ++ GH.issueTitle issue
-  suggestedBranchName = GH.issueTitle
+  summarizeOneLine issue = show (GH.issueNumber issue) ++ ": " ++ cs (GH.issueTitle issue)
+  suggestedBranchName = cs . GH.issueTitle
 
 instance IssueBackend GithubConfig where
   type Issue GithubConfig = GH.Issue
@@ -77,7 +81,7 @@ instance IssueBackend GithubConfig where
   createIssue creationData ghConfig = do
     GithubRepoRef owner repo <- issueRepositoryRef
     let auth = githubAuth ghConfig
-    issue <- liftGithubIO $ GH.createIssue auth owner repo creationData
+    issue <- liftGithubIO $ GH.createIssue auth (fromString owner) (fromString repo) creationData
     return $ issueId issue
 
   getIssueById issueId _ = do
@@ -87,9 +91,9 @@ instance IssueBackend GithubConfig where
   makeIssueTransition (GithubIssueId issueNumber) transition ghConfig = do
     GithubRepoRef owner repo <- issueRepositoryRef
     let auth = githubAuth ghConfig
-    let edit = GH.EditIssue Nothing Nothing Nothing (Just transition) Nothing Nothing
+    let edit = GH.EditIssue Nothing Nothing Nothing (Just $ cs transition) Nothing Nothing
     void . liftGithubIO $
-      GH.editIssue auth owner repo issueNumber edit
+      GH.editIssue auth (fromString owner) (fromString repo) (GH.mkId Proxy issueNumber) edit
 
   close = flip makeIssueTransition "closed"
 
@@ -99,7 +103,7 @@ instance IssueBackend GithubConfig where
     issue <- getIssueById issueId ghConfig
     case GH.issueHtmlUrl issue of
       Nothing  -> throwError . IOException $ "Could not get issue URL for issue " ++ show issueId
-      Just url -> return url
+      Just url -> return $ cs url
 
   parseIssueId s _ = GithubIssueId <$> readMaybe s `orThrow` ex
     where ex = IOException $ "Unable to parse issue ID: " ++ s
@@ -116,14 +120,14 @@ instance IssueBackend GithubConfig where
   getIssueTypeAliasMap _ = return Map.empty
 
   makeIssueCreationData issueType summary _ =
-    GH.NewIssue summary Nothing Nothing Nothing (Just [issueType])
+    GH.NewIssue (cs summary) Nothing Nothing Nothing (Just [cs issueType])
 
   searchIssues options s _ = do
     when optionsSelected $
       liftIO . putStrLn $ "Note: search options are currently ignored when using the Github backend"
 
     searchString <- issueSearchString s <$> issueRepositoryRef
-    searchResult <- liftGithubIO $ GH.searchIssues searchString
+    searchResult <- liftGithubIO $ GH.searchIssues [("q", Just $ cs searchString)]
     return $ GH.searchIssuesIssues searchResult
     where
       optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
@@ -134,7 +138,7 @@ instance IssueBackend GithubConfig where
 
     repoRef@(GithubRepoRef owner repo) <- issueRepositoryRef
     let searchString = issueSearchString s repoRef
-    return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?" ++ searchString
+    return $ "https://github.com/" ++ owner ++ "/" ++ repo ++ "/issues?q=" ++ urlEncode searchString
     where
       optionsSelected = searchOverAllProjects options || searchOnlyUserIssues options
 
@@ -143,10 +147,10 @@ instance IssueBackend GithubConfig where
   testBackend _ = do
     GithubRepoRef owner repo <- currentRepositoryRef
     liftIO . putStrLn $ "Using repository: " ++ owner ++ "/" ++ repo
-    void . liftGithubIO $ GH.userRepo owner repo
+    void . liftGithubIO $ GH.repository (fromString owner) (fromString repo)
 
 issueSearchString :: String -> GithubRepoRef -> String
-issueSearchString s (GithubRepoRef owner repo) = "q=" ++ (urlEncode $ s ++ " repo:" ++ owner ++ "/" ++ repo)
+issueSearchString s (GithubRepoRef owner repo) = s ++ " repo:" ++ owner ++ "/" ++ repo
 
 issueRepositoryRef :: AppM GithubRepoRef
 issueRepositoryRef = do
@@ -223,11 +227,11 @@ githubAuth :: GithubConfig -> GH.GithubAuth
 githubAuth = GH.GithubOAuth . view githubOAuthToken
 
 fetchRepo :: GithubRepoRef -> AppM GH.Repo
-fetchRepo (GithubRepoRef user repo) = liftGithubIO $ GH.userRepo user repo
+fetchRepo (GithubRepoRef user repo) = liftGithubIO $ GH.repository (fromString user) (fromString repo)
 
 fetchIssue :: GithubRepoRef -> GithubIssueId -> AppM GH.Issue
 fetchIssue (GithubRepoRef owner repo) (GithubIssueId issueId) =
-  liftGithubIO $ GH.issue owner repo issueId
+  liftGithubIO $ GH.issue (fromString owner) (fromString repo) (GH.mkId Proxy issueId)
 
 liftGithub :: Either GH.Error a -> Either AppException a
 liftGithub = mapLeft (IOException . show)

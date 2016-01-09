@@ -48,8 +48,7 @@ library
                      , http-types
                      , string-conversions
                      , transformers
-                     -- needed until github 0.14 is released (https://github.com/bos/aeson/issues/287)
-                     , aeson < 0.10
+                     , aeson
                      , lens-aeson
                      , lens
                      , directory
@@ -72,7 +71,7 @@ library
                      , semigroups
                      , unordered-containers
                      , split
-                     , github
+                     , github >= 0.14.0
                      --, readline
   extra-lib-dirs:      /usr/local/opt/openssl/lib
   include-dirs:        /usr/local/opt/openssl/include
@@ -92,14 +91,13 @@ test-suite tests
   main-is:             Tests.hs
   build-depends:       HUnit
                      , QuickCheck
-                     -- needed until github 0.14 is released (https://github.com/bos/aeson/issues/287)
-                     , aeson < 0.10
+                     , aeson
                      , agile-cli
                      , base >=4.7 && <4.9
                      , checkers
                      , directory
                      , filepath
-                     , github
+                     , github >= 0.14.0
                      , jira-api
                      , lens
                      , parsec
