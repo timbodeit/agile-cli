@@ -91,6 +91,7 @@ test-suite tests
   main-is:             Tests.hs
   other-modules:       ConfigTests
                      , Git.BranchParserTests
+                     , Github.IntegrationTests
                      , Github.RepositoryTests
                      , IntegrationTests
                      , ParserTests
