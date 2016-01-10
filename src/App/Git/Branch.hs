@@ -2,7 +2,29 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
-module App.Git.Branch where
+module App.Git.Branch ( BranchName(..)
+                      , RemoteName(..)
+                      , IsBranchName(..)
+                      , BranchStatus(..)
+                      , RemoteBranchName(..)
+                      , FastForwardOption(..)
+                      , getCurrentBranch
+                      , getCurrentBranch'
+                      , getLocalBranches
+                      , getLocalMergedBranches
+                      , getRemoteBranches
+                      , getCurrentTrackingBranch
+                      , newBranch
+                      , removeBranch
+                      , checkoutBranch
+                      , checkoutBranch'
+                      , checkoutRemoteBranch
+                      , checkoutRemoteBranch'
+                      , mergeBranch
+                      , branchStatus
+                      , parseBranchName'
+                      , (</>)
+                      ) where
 
 import           App.Git.Core
 import           App.Util
@@ -18,9 +40,9 @@ import           Data.String.Conversions
 import qualified Data.Text                 as T
 import           Text.RegexPR
 
-newtype BranchName = BranchName String deriving (Eq, Show, IsString)
+newtype BranchName = BranchName String deriving (Eq, Show)
 
-newtype RemoteName = RemoteName String deriving (Eq, IsString)
+newtype RemoteName = RemoteName String deriving Eq
 
 instance Show RemoteName where
   show (RemoteName n) = n
@@ -31,8 +53,8 @@ data BranchStatus = UpToDate
                   deriving (Show, Eq)
 
 class IsBranchName a where
-  parseBranchName    :: String -> Maybe a
-  toBranchString :: a -> String
+  parseBranchName :: String -> Maybe a
+  toBranchString  :: a -> String
 
 instance IsBranchName BranchName where
   parseBranchName s = do

@@ -165,7 +165,7 @@ issueRepositoryRef ghConfig = do
       _                        -> repoRef
 
 instance PullRequestBackend GithubConfig where
-  createPullRequestUrl (BranchName sourceBranch) (BranchName targetBranch) ghConfig = do
+  createPullRequestUrl sourceBranch targetBranch ghConfig = do
     repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef $ Just ghConfig
     repo <- fetchRepo repoRef
 
@@ -182,7 +182,8 @@ instance PullRequestBackend GithubConfig where
                  else repoRef
 
     return $ "https://github.com/" ++ baseOwner ++ "/" ++ repo' ++
-             "/compare/" ++ targetBranch ++ "..." ++ owner ++ ":" ++ sourceBranch
+             "/compare/" ++ toBranchString targetBranch ++
+             "..." ++ owner ++ ":" ++ toBranchString sourceBranch
 
 currentRepositoryRef :: Maybe GithubConfig -> AppM GithubRepoRef
 currentRepositoryRef mConfig = do
