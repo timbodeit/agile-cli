@@ -10,7 +10,7 @@ packages:
 # JIRA API library
 - location:
       git: https://github.com/dsmatter/jira-api.git
-      commit: c57284aeedc7db6aafc5793419d55a309146db41
+      commit: 724541ad9160f6bf6197af44e7597f9cb0b39178
 
 # Snapshot of github library (pre-version 0.14.0)
 - location:
