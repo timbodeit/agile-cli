@@ -24,6 +24,7 @@ import           Data.String.Conversions
 import qualified Data.Text                  as T
 import qualified Jira.API                   as J
 import           Network.HTTP.Client        hiding (path)
+import           Network.HTTP.Client.TLS    (tlsManagerSettings)
 import           System.Directory
 import           Web.Authenticate.OAuth
 
@@ -135,7 +136,7 @@ doInitAuth config = runEitherT $ do
 
     doGetAccessToken :: PrivateKey -> AppIO (BS.ByteString, BS.ByteString)
     doGetAccessToken pk = do
-      manager <- newManager defaultManagerSettings
+      manager <- newManager tlsManagerSettings
       let oauth = J.getOAuth (config^.configJiraConfig.jiraBaseUrl)
                   (config^.configJiraConfig.jiraOAuthConsumerKey)
                   pk
