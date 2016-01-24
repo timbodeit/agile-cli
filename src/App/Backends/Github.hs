@@ -36,7 +36,7 @@ instance Show GithubRepoRef where
 newtype GithubIssueId = GithubIssueId { unGithubIssueId :: Int } deriving Eq
 
 instance Show GithubIssueId where
-  show = show . unGithubIssueId
+  show (GithubIssueId issueNumber) = "#" ++ show issueNumber
 
 newtype GithubIssueType = GithubIssueType { unGithubIssueType :: String } deriving Eq
 
