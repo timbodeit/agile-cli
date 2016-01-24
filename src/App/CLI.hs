@@ -307,7 +307,7 @@ withIssue s k = withIssueId s $ \issueId backend -> do
   k issue backend
 
 matchesIssueKey :: (IsIssueId i, IsBranchName b) => i -> b -> Bool
-matchesIssueKey issueKey branch = show issueKey `isInfixOf` toBranchString branch
+matchesIssueKey issueKey branch = (show issueKey ++ "-") `isInfixOf` toBranchString branch
 
 -- Git Helpers
 
