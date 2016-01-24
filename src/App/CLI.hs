@@ -331,7 +331,7 @@ runApp' m = runEitherT $ do
 configRemote :: Getter Config Git.RemoteName
 configRemote = configRemoteName.to Git.RemoteName
 
-localDevelopBranch :: IsBranchName b => Getter Config (Git.GitM b)
+localDevelopBranch :: Getter Config (Git.GitM BranchName)
 localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
 
 -- Exception Handling
