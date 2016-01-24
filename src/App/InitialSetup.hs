@@ -9,6 +9,7 @@ import           App.Types
 import           App.Util
 
 import           Control.Applicative
+import           Control.Arrow              ((&&&))
 import           Control.Lens               hiding (set')
 import           Control.Monad              (when)
 import           Control.Monad.IO.Class     (liftIO)
@@ -17,13 +18,14 @@ import           Crypto.Types.PubKey.RSA    (PrivateKey (..))
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Lazy       as LBS
 import           Data.List
-import           Data.Maybe                 (isJust)
+import           Data.Maybe                 (isJust, isNothing)
 import           Data.String.Conversions
 import qualified Data.Text                  as T
 import qualified Jira.API                   as J
 import           Network.HTTP.Client        hiding (path)
 import           Network.HTTP.Client.TLS    (tlsManagerSettings)
 import           System.Directory
+import           System.Exit                (exitSuccess)
 import           Web.Authenticate.OAuth
 
 data ConfigurableBackend = Jira | Stash | Github deriving (Eq, Show)
@@ -64,25 +66,35 @@ runInteractiveConfigWizard = do
     runJiraAuth config >>= either handleAppException (writeConfigTo preferredConfigFileName)
 
 runConfigWizardFromExistingConfig :: (FilePath, Config) -> IO ()
-runConfigWizardFromExistingConfig (configPath, config) =
-  let availableAnswers = if configPath == preferredConfigFileName
-                              then drop 1 answers
-                              else answers
-  in runUserChoice question availableAnswers
+runConfigWizardFromExistingConfig (configPath, config) = do
+  isPreferredConfigPath <- doesFileExist preferredConfigFileName
+  runUserChoice question $ answers isPreferredConfigPath
   where
     question = unlines'
       [ "Config file with authentication info found at " ++ configPath
       , "What do you want to do?"
       ]
-    answers = zip
-      [ "Copy config to local directory"
-      , "Create a new config in the local directory using the wizard"
-      , "Authenticate with JIRA"
+    answers isPreferredConfigPath =
+      [ ( "Copy config to local directory"
+        , copyFile configPath preferredConfigFileName
+        ) | not isPreferredConfigPath
+      ] ++
+      [ ( "Create a new config in the local directory using the wizard"
+        , runInteractiveConfigWizard
+        )
+      ] ++
+      map (backendQuestion &&& backendAction) unconfiguredBackends ++
+      [ ( "(Re-)authenticate with JIRA"
+        , runJiraAuth config >>= either handleAppException (writeConfigTo configPath)
+        ) | isJust $ config^.configJiraConfig
+      ] ++
+      [ ( "Quit", exitSuccess)
       ]
-      [ copyFile configPath preferredConfigFileName
-      , runInteractiveConfigWizard
-      , runJiraAuth config >>= either handleAppException (writeConfigTo configPath)
-      ]
+    backendQuestion backend = "Configure " ++ show backend ++ " backend"
+    backendAction backend = configureAndUpdate backend config >>= writeConfigTo configPath
+    unconfiguredBackends = [Jira   | isNothing $ config^.configJiraConfig] ++
+                           [Stash  | isNothing $ config^.configStashConfig] ++
+                           [Github | isNothing $ config^.configGithubConfig]
 
 getConfigInteractively :: IO Config
 getConfigInteractively = do
