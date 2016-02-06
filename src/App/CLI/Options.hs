@@ -13,6 +13,10 @@ data FinishType = FinishWithPullRequest
                 | FinishWithMerge
                 deriving (Show, Eq)
 
+data BranchStrategy = BranchOffCurrent
+                    | BranchOffRemoteDevelop
+                    deriving (Show, Eq)
+
 data SearchOptions = SearchOptions { searchOverAllProjects :: Bool
                                    , searchOnlyUserIssues  :: Bool
                                    , searchOnWebsite       :: Bool
@@ -25,13 +29,13 @@ data CLICommand = InitCommand
                 | ShowCommand (Maybe String)
                 | OpenCommand (Maybe String)
                 | SearchCommand SearchOptions String
-                | NewCommand Bool String String
-                | StartCommand (Maybe String)
+                | NewCommand BranchStrategy Bool String String
+                | StartCommand BranchStrategy (Maybe String)
                 | StopCommand (Maybe String)
                 | ResolveCommand (Maybe String)
                 | CloseCommand (Maybe String)
                 | ReopenCommand (Maybe String)
-                | CheckoutCommand String
+                | CheckoutCommand BranchStrategy String
                 | CreatePullRequestCommand (Maybe String)
                 | FinishCommand FinishType (Maybe String)
                 | CommitCommand [String]
@@ -71,8 +75,7 @@ optionParser = CLIOptions
         ShowCommand <$> issueArgParser)
      <> command "open" (toParserInfo "Open link to an issue in browser" $
         OpenCommand <$> issueArgParser)
-     <> command "start" (toParserInfo "Start work on an issue" $
-        StartCommand <$> issueArgParser)
+     <> command "start" (toParserInfo "Start work on an issue" startCommandParser)
      <> command "stop" (toParserInfo "Stop work on an issue" $
         StopCommand <$> issueArgParser)
      <> command "resolve" (toParserInfo "Mark an issue as resolved" $
@@ -121,7 +124,8 @@ searchCommandParser = SearchCommand
 
 newCommandParser :: Parser CLICommand
 newCommandParser = NewCommand
-  <$> switch ( short 's'
+  <$> branchOffArgParser
+  <*> switch ( short 's'
             <> long "start"
             <> help "Whether to start the issue after creation"
              )
@@ -132,11 +136,17 @@ newCommandParser = NewCommand
               <> help "Issue summary"
                )
 
+startCommandParser :: Parser CLICommand
+startCommandParser = StartCommand
+  <$> branchOffArgParser
+  <*> issueArgParser
+
 checkoutCommandParser :: Parser CLICommand
-checkoutCommandParser = CheckoutCommand <$> strArgument
-  ( metavar "ISSUE"
- <> help "Issue key or number"
-  )
+checkoutCommandParser = CheckoutCommand
+  <$> branchOffArgParser
+  <*> strArgument ( metavar "ISSUE"
+                 <> help "Issue key or number"
+                  )
 
 finishCommandParser :: Parser CLICommand
 finishCommandParser = FinishCommand
@@ -156,6 +166,14 @@ issueArgParser = optional $ strArgument
   ( metavar "ISSUE"
  <> help "Issue key or number"
   )
+
+branchOffArgParser :: Parser BranchStrategy
+branchOffArgParser =
+  flag BranchOffRemoteDevelop BranchOffCurrent
+    ( short 'c'
+  <> long "current"
+  <> help "Whether to branch off the current branch when creating new branch"
+    )
 
 toParserInfo :: String -> Parser a -> ParserInfo a
 toParserInfo desc p = info (helper <*> p) (fullDesc <> progDesc desc)
