@@ -181,9 +181,16 @@ instance PullRequestBackend GithubConfig where
                  then parentRepoRef
                  else repoRef
 
-    return $ "https://github.com/" ++ baseOwner ++ "/" ++ repo' ++
-             "/compare/" ++ toBranchString targetBranch ++
-             "..." ++ owner ++ ":" ++ toBranchString sourceBranch
+    return $ "https://github.com/"
+      ++ urlEncode baseOwner
+      ++ "/"
+      ++ urlEncode repo'
+      ++ "/compare/"
+      ++ urlEncode (toBranchString targetBranch)
+      ++ "..."
+      ++ urlEncode owner
+      ++ ":"
+      ++ urlEncode (toBranchString sourceBranch)
 
 currentRepositoryRef :: Maybe GithubConfig -> AppM GithubRepoRef
 currentRepositoryRef mConfig = do
