@@ -1,8 +1,30 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
-module App.Git.Branch where
+module App.Git.Branch ( BranchName(..)
+                      , RemoteName(..)
+                      , IsBranchName(..)
+                      , BranchStatus(..)
+                      , RemoteBranchName(..)
+                      , FastForwardOption(..)
+                      , getCurrentBranch
+                      , getCurrentBranch'
+                      , getLocalBranches
+                      , getLocalMergedBranches
+                      , getRemoteBranches
+                      , getCurrentTrackingBranch
+                      , newBranch
+                      , removeBranch
+                      , checkoutBranch
+                      , checkoutBranch'
+                      , checkoutRemoteBranch
+                      , checkoutRemoteBranch'
+                      , mergeBranch
+                      , branchStatus
+                      , parseBranchName'
+                      , (</>)
+                      ) where
 
 import           App.Git.Core
 import           App.Util
@@ -11,17 +33,16 @@ import           Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import           Data.Char
-import           Data.List                  (find, isInfixOf, isSuffixOf)
-import           Data.Maybe                 (mapMaybe)
+import           Data.List                 (find, isInfixOf, isSuffixOf)
+import           Data.Maybe                (mapMaybe)
 import           Data.String
 import           Data.String.Conversions
-import qualified Data.Text                  as T
-import           Jira.API                   (IssueKey)
+import qualified Data.Text                 as T
 import           Text.RegexPR
 
-newtype BranchName = BranchName String deriving (Eq, Show, IsString)
+newtype BranchName = BranchName String deriving (Eq, Show)
 
-newtype RemoteName = RemoteName String deriving (Eq, IsString)
+newtype RemoteName = RemoteName String deriving Eq
 
 instance Show RemoteName where
   show (RemoteName n) = n
@@ -32,8 +53,8 @@ data BranchStatus = UpToDate
                   deriving (Show, Eq)
 
 class IsBranchName a where
-  parseBranchName    :: String -> Maybe a
-  toBranchString :: a -> String
+  parseBranchName :: String -> Maybe a
+  toBranchString  :: a -> String
 
 instance IsBranchName BranchName where
   parseBranchName s = do
@@ -84,7 +105,8 @@ getCurrentBranch =
     branch -> Just <$> parseBranchName' branch
 
 getCurrentBranch' :: GitM BranchName
-getCurrentBranch' = liftMaybe (GitException "Cannot get current branch") =<< getCurrentBranch
+getCurrentBranch' = getCurrentBranch
+                    `orThrowM` GitException "Cannot get current branch"
 
 getLocalBranches :: GitM [BranchName]
 getLocalBranches = branchesFromOutput <$>
@@ -139,8 +161,8 @@ mergeBranch ffOption source target = void $ do
   checkoutBranch' target
   git "merge" [toGitOption ffOption, branchOpt source]
 
-branchStatus :: RemoteName -> IssueKey -> GitM BranchStatus
-branchStatus remote issueKey = do
+branchStatus :: RemoteName -> String -> GitM BranchStatus
+branchStatus remote issueId = do
   localBranch  <- getCurrentBranch'
   localRev     <- getRev "HEAD"
 
@@ -156,7 +178,7 @@ branchStatus remote issueKey = do
       trackingBranch <- MaybeT getCurrentTrackingBranch
       let RemoteBranchName remote' branch' = trackingBranch
       guard $ remote == remote'
-      guard $ containsIssueKey (toBranchString branch')
+      guard $ containsIssueId (toBranchString branch')
       return trackingBranch
 
     validRemoteBranch localBranch localRev = do
@@ -172,12 +194,12 @@ branchStatus remote issueKey = do
           rev <- getBranchRev branch
           return $ rev == localRev
         exactMatch = (== localBranch) . branchName
-        issueMatch = containsIssueKey . toBranchString . branchName
+        issueMatch = containsIssueId . toBranchString . branchName
 
-    containsIssueKey = isInfixOf (show issueKey)
+    containsIssueId = isInfixOf issueId
 
 parseBranchName' :: IsBranchName b => String -> GitM b
-parseBranchName' name = liftMaybe ex $ parseBranchName name
+parseBranchName' name = parseBranchName name `orThrow` ex
   where
     ex = GitException $ "Invalid branch name: " ++ name
 

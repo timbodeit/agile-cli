@@ -87,7 +87,7 @@ branchStatusTests = withGitTestEnvironment $ \dir -> do
       Left e       -> assertFailure $ "Branch status should succeed. Failure is: " ++ show e
       Right status -> assertBranchStatus expected status
     assertBranchStatus = assertEqual "Unexpected branch status"
-    issueKey = IssueKey "TEST" (IssueNumber 42)
+    issueKey = "TEST-42"
     remote = "origin"
 
 workingCopyStatusTests :: Assertion

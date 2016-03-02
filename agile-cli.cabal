@@ -16,9 +16,14 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     App.CLI
+  exposed-modules:     App.Backends
+                     , App.Backends.Github
+                     , App.Backends.Jira
+                     , App.Backends.Jira.Parsers
+                     , App.Backends.Stash
+                     , App.Backends.Types
+                     , App.CLI
                      , App.CLI.Options
-                     , App.CLI.Parsers
                      , App.Config
                      , App.ConfigBuilder
                      , App.Git
@@ -27,7 +32,6 @@ library
                      , App.Git.Remote
                      , App.Git.WorkingCopy
                      , App.InitialSetup
-                     , App.Stash
                      , App.Types
                      , App.Util
   build-depends:       base >=4.7 && <4.9
@@ -67,6 +71,7 @@ library
                      , semigroups
                      , unordered-containers
                      , split
+                     , github >= 0.14.0
                      --, readline
   extra-lib-dirs:      /usr/local/opt/openssl/lib
   include-dirs:        /usr/local/opt/openssl/include
@@ -84,6 +89,13 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Tests.hs
+  other-modules:       ConfigTests
+                     , Git.BranchParserTests
+                     , Github.IntegrationTests
+                     , Github.RepositoryTests
+                     , IntegrationTests
+                     , ParserTests
+                     , UtilTests
   build-depends:       HUnit
                      , QuickCheck
                      , aeson
@@ -92,6 +104,7 @@ test-suite tests
                      , checkers
                      , directory
                      , filepath
+                     , github >= 0.14.0
                      , jira-api
                      , lens
                      , parsec

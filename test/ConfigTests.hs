@@ -11,6 +11,9 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
 
 import           App.Config                           (emptyConfig,
+                                                       emptyJiraConfig,
+                                                       emptyStashConfig,
+                                                       emptyGithubConfig,
                                                        fromPartialConfig,
                                                        parsePartialConfig)
 import           App.ConfigBuilder
@@ -55,6 +58,9 @@ tests =
     , testCase "broken JSON config" testBrokenJsonConfig
 
     , testCase "missingConfigKeys (samples)" testMissingConfigKeys
+    , testCase "missingConfigKeys (JIRA sample)" testMissingJiraConfigKeys
+    , testCase "missingConfigKeys (Stash sample)" testMissingStashConfigKeys
+    , testCase "missingConfigKeys (Github sample)" testMissingGithubConfigKeys
     , testProperty
         "missingConfigKeys (empty reference object)"
         missingConfigKeysEmptyReferenceProp
@@ -92,6 +98,39 @@ testMissingConfigKeys =
                            , "d" ~> object ["b" ~> Null]
                            ]
         expected = map configKey ["b", "c.a"]
+
+testMissingJiraConfigKeys :: Assertion
+testMissingJiraConfigKeys = do
+  missingConfigKeys withJiraConfig withJiraConfig @?= []
+  missingConfigKeys withJiraConfig withBrokenJiraConfig @?= [brokenKey]
+  where
+    baseConfig = PartialConfig . toJSON $ emptyConfig
+    withJiraConfig = PartialConfig . toJSON $ emptyConfig { _configJiraConfig = Just emptyJiraConfig }
+    withBrokenJiraConfig = let (PartialConfig c) = withJiraConfig
+                           in  PartialConfig $ c & keySetter brokenKey .~ Nothing
+    brokenKey = configKey "JiraConfig.BaseUrl"
+
+testMissingStashConfigKeys :: Assertion
+testMissingStashConfigKeys = do
+  missingConfigKeys withStashConfig withStashConfig @?= []
+  missingConfigKeys withStashConfig withBrokenStashConfig @?= [brokenKey]
+  where
+    baseConfig = PartialConfig . toJSON $ emptyConfig
+    withStashConfig = PartialConfig . toJSON $ emptyConfig { _configStashConfig = Just emptyStashConfig }
+    withBrokenStashConfig = let (PartialConfig c) = withStashConfig
+                           in  PartialConfig $ c & keySetter brokenKey .~ Nothing
+    brokenKey = configKey "StashConfig.BaseUrl"
+
+testMissingGithubConfigKeys :: Assertion
+testMissingGithubConfigKeys = do
+  missingConfigKeys withGithubConfig withGithubConfig @?= []
+  missingConfigKeys withGithubConfig withBrokenGithubConfig @?= [brokenKey]
+  where
+    baseConfig = PartialConfig . toJSON $ emptyConfig
+    withGithubConfig = PartialConfig . toJSON $ emptyConfig { _configGithubConfig = Just emptyGithubConfig }
+    withBrokenGithubConfig = let (PartialConfig c) = withGithubConfig
+                           in  PartialConfig $ c & keySetter brokenKey .~ Nothing
+    brokenKey = configKey "GithubConfig.OAuthToken"
 
 mergeObjectsNeutralLeftProp :: Property
 mergeObjectsNeutralLeftProp = forAll anyJsonObject $ \o ->
@@ -160,15 +199,14 @@ testConfigPartMergingSample =
     assertFailure "Could not merge config parts"
   Just (ConfigPart path partialConfig) ->
     case fromPartialConfig partialConfig of
-    Left _       -> assertFailure "Could not parse partial config"
-    Right config ->
-      assertBool "The merged config should match the sample" $
-         path == "/home/user/project/.agile"
-      && config^.configJiraConfig.jiraBaseUrl  == "http://jira.example.com"
-      && config^.configJiraConfig.jiraProject  == "MY"
-      && config^.configJiraConfig.jiraUsername == "myself"
+      Left e       -> assertFailure $ "Could not parse partial config\n" ++ show e
+      Right config -> do
+        path @?= "/home/user/project/.agile"
+        config^.configJiraConfig._Just.jiraBaseUrl @?= "http://jira.example.com"
+        config^.configJiraConfig._Just.jiraProject @?= "MY"
+        config^.configJiraConfig._Just.jiraUsername @?= "myself"
   where
-    baseConfig = PartialConfig (toJSON emptyConfig)
+    baseConfig = PartialConfig . toJSON $ emptyConfig { _configJiraConfig = Just emptyJiraConfig }
     teamConfig = PartialConfig $ object [ "JiraConfig" ~> object
                                           [ "BaseUrl"  ~> "http://jira.example.com"
                                           , "Username" ~> "nobody"

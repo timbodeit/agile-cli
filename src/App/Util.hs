@@ -1,9 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module App.Util where
 
 import           App.Types
 
+import           qualified Data.ByteString as BS
+import           Network.HTTP.Types.URI    (urlEncode)
+import           Data.String.Conversions
 import           System.Process
 import           Control.Applicative
 import           Control.Exception
@@ -39,14 +43,14 @@ hoistMaybe = MaybeT . return
 onError :: (MonadError e m) => m a -> m a -> m a
 onError = flip catchError . const
 
+orElse :: (MonadError e m) => m a -> m a -> m a
+orElse = flip onError
+
 orThrow :: (MonadError e m) => Maybe a -> e -> m a
 orThrow = flip liftMaybe
 
 orThrowM :: (MonadError e m) => m (Maybe a) -> e -> m a
 orThrowM m e = m >>= liftMaybe e
-
-orElse :: (MonadError e m) => m a -> m a -> m a
-orElse m d = m `catchError` const d
 
 attempt :: (Functor m, MonadError e m) => m a -> m ()
 attempt m = void m `orElse` return ()
@@ -59,6 +63,12 @@ liftEitherIO ioe = liftIO ioe >>= either throwError return
 
 liftEitherM :: (MonadError e m) => m (Either e a) -> m a
 liftEitherM = (>>= either throwError return)
+
+mapError :: (Monad m, MonadError e m) => (e -> e) -> m a -> m a
+mapError f = (`catchError` throwError . f)
+
+orMap :: (Monad m, MonadError e m) => m a -> (e -> e) -> m a
+orMap = flip mapError
 
 -- Custom operators
 
@@ -88,6 +98,10 @@ ma <||> mb = do
   if a == empty
   then mb
   else ma
+
+infixl 3 <|||>
+(<|||>) :: (MonadError e m) => m a -> m a -> m a
+ma <|||> mb = ma `catchError` const mb
 
 -- String handling
 
@@ -134,19 +148,20 @@ askYesNoWithDefault defaultAnswer question = do
     showDefault = if defaultAnswer then "y" else "n"
     tryAgain    = askYesNoWithDefault defaultAnswer question
 
-runUserChoice :: String -> [(String, IO a)] -> IO a
-runUserChoice question answers = do
+userChoice :: String -> [(String, a)] -> IO a
+userChoice question answers = do
   let question' = unlines' $ question : renderAnswers
   readMaybe <$> ask question' >>= \case
-    Nothing -> tryAgain
-    Just i | i > 0 && i <= length answers -> snd (answers !! (i - 1))
-           | otherwise -> tryAgain
+    Just i | i > 0 && i <= length answers -> return . snd $ answers !! (i - 1)
+    _ -> tryAgain
   where
-    tryAgain = putStrLn "Invalid answer." >> runUserChoice question answers
+    tryAgain = putStrLn "Invalid answer." >> userChoice question answers
     renderAnswers = zipWith renderAnswer [1..] $ map fst answers
-
-    renderAnswer :: Int -> String -> String
     renderAnswer i answer = "[" ++ show i ++ "] " ++ answer
+
+
+runUserChoice :: String -> [(String, IO a)] -> IO a
+runUserChoice question = join . userChoice question
 
 putStr' :: String -> IO ()
 putStr' s = putStr s >> hFlush stdout
@@ -173,3 +188,7 @@ unlines' l  = init (unlines l)
 -- Match regex with string and return the first group match
 (=~~) :: String -> String -> Maybe String
 s =~~ regex = matchRegexPR regex s & view (_Just._2.to (lookup 1))
+
+-- URL-encode a given string
+urlEncode :: (ConvertibleStrings a BS.ByteString, ConvertibleStrings BS.ByteString a) => a -> a
+urlEncode = cs . Network.HTTP.Types.URI.urlEncode True . cs

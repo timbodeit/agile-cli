@@ -11,7 +11,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
 import qualified Text.Parsec                          as P
 
-import           App.CLI.Parsers
+import           App.Backends.Jira.Parsers
 
 tests :: [Test]
 tests =

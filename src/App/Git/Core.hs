@@ -6,12 +6,15 @@
 
 module App.Git.Core where
 
-import           App.Util                   (trim)
+import           App.Types                  hiding (GitException)
+import qualified App.Types                  (AppException (..))
+import           App.Util
 
 import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
+import           Data.Either.Combinators
 import           Data.String.Conversions
 import qualified Data.Text                  as T
 import           Data.Typeable
@@ -40,6 +43,11 @@ newtype GitM a = GitM { unGitM :: EitherT GitException IO a
 
 runGit :: GitM a -> IO (Either GitException a)
 runGit = runEitherT . unGitM
+
+liftGit :: GitM a -> AppM a
+liftGit m = liftEitherIO $ mapLeft convertException <$> runGit m
+  where
+    convertException (GitException s) = App.Types.GitException s
 
 git :: GitCommand -> [GitOption] -> GitM T.Text
 git command' options = git' command' options >>= \case

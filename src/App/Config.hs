@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase    #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module App.Config where
 
@@ -48,6 +49,13 @@ defaultStashConfig = StashConfig
   , _stashReviewers  = []
   }
 
+defaultGithubConfig :: GithubConfig
+defaultGithubConfig = GithubConfig
+  { _githubUsername   = Nothing
+  , _githubRepo       = Nothing
+  , _githubOAuthToken = ""
+  }
+
 defaultIssueTypeMap :: Map.Map String String
 defaultIssueTypeMap = Map.fromList
   [ "b" ~> "Bug"
@@ -66,8 +74,21 @@ defaultSearchAliases = Map.fromList
 
 defaultConfig :: Config
 defaultConfig = Config
-  { _configJiraConfig          = defaultJiraConfig
-  , _configStashConfig         = defaultStashConfig
+  { _configJiraConfig          = Nothing
+  , _configStashConfig         = Nothing
+  , _configGithubConfig        = Nothing
+  , _configDevelopBranch       = "develop"
+  , _configRemoteName          = "origin"
+  , _configDefaultBranchPrefix = "feature/"
+  , _configBranchPrefixMap     = Map.fromList [("Bug", "bugfix/")]
+  , _configBrowserCommand      = "open"
+  }
+
+templateConfig :: Config
+templateConfig = Config
+  { _configJiraConfig          = Just defaultJiraConfig
+  , _configStashConfig         = Just defaultStashConfig
+  , _configGithubConfig        = Just defaultGithubConfig
   , _configDevelopBranch       = "develop"
   , _configRemoteName          = "origin"
   , _configDefaultBranchPrefix = "feature/"
@@ -82,22 +103,38 @@ emptyConfig = Config
   , _configDefaultBranchPrefix = ""
   , _configBranchPrefixMap     = Map.empty
   , _configBrowserCommand      = ""
-  , _configJiraConfig       = JiraConfig { _jiraBaseUrl               = ""
-                                         , _jiraUsername              = ""
-                                         , _jiraProject               = ""
-                                         , _jiraFinishMergeTransition = ""
-                                         , _jiraIssueTypeAliases      = Map.empty
-                                         , _jiraSearchAliases         = Map.empty
-                                         , _jiraOAuthConsumerKey      = ""
-                                         , _jiraOAuthSigningKeyPath   = ""
-                                         , _jiraOAuthAccessToken      = ""
-                                         , _jiraOAuthAccessSecret     = ""
-                                         }
-  , _configStashConfig      = StashConfig { _stashBaseUrl    = ""
-                                          , _stashProject    = ""
-                                          , _stashRepository = ""
-                                          , _stashReviewers  = []
-                                          }
+  , _configJiraConfig          = Nothing
+  , _configStashConfig         = Nothing
+  , _configGithubConfig        = Nothing
+  }
+
+emptyJiraConfig :: JiraConfig
+emptyJiraConfig = JiraConfig
+  { _jiraBaseUrl               = ""
+  , _jiraUsername              = ""
+  , _jiraProject               = ""
+  , _jiraFinishMergeTransition = ""
+  , _jiraIssueTypeAliases      = Map.empty
+  , _jiraSearchAliases         = Map.empty
+  , _jiraOAuthConsumerKey      = ""
+  , _jiraOAuthSigningKeyPath   = ""
+  , _jiraOAuthAccessToken      = ""
+  , _jiraOAuthAccessSecret     = ""
+  }
+
+emptyStashConfig :: StashConfig
+emptyStashConfig = StashConfig
+  { _stashBaseUrl    = ""
+  , _stashProject    = ""
+  , _stashRepository = ""
+  , _stashReviewers  = []
+  }
+
+emptyGithubConfig :: GithubConfig
+emptyGithubConfig = GithubConfig
+  { _githubUsername   = Nothing
+  , _githubRepo       = Nothing
+  , _githubOAuthToken = ""
   }
 
 -- Config loading
@@ -106,10 +143,9 @@ emptyConfig = Config
 -- errors are captured as AppExceptions in an either type.
 type AppIO a = IO (Either AppException a)
 
-getJiraApiConfig :: Config -> AppIO J.JiraConfig
-getJiraApiConfig config =
-  let jiraConfig    = config^.configJiraConfig
-      authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
+getJiraApiConfig :: JiraConfig -> AppIO J.JiraConfig
+getJiraApiConfig jiraConfig =
+  let authConfig pk = J.OAuthConfig (jiraConfig^.jiraOAuthConsumerKey)
                                     pk
                                     (jiraConfig^.jiraOAuthAccessToken)
                                     (jiraConfig^.jiraOAuthAccessSecret)
@@ -138,13 +174,12 @@ readConfig' = runEitherT $
   >>= \case
     Nothing -> throwError notFoundException
     Just (ConfigPart (ConfigPath configPath) partialConfig) ->
-      case missingKeys partialConfig of
-      []   -> do
+      case missingConfigKeys (referenceConfigFor partialConfig) partialConfig  of
+      [] -> do
         config <- hoistEither $ fromPartialConfig partialConfig
         return (configPath, config)
       keys -> EitherT $ handleMissingKeys keys configPath
   where
-    missingKeys = missingConfigKeys referenceConfig
     notFoundException =  ConfigException
                          "No config file found. Please try the init command to get started."
 
@@ -227,8 +262,29 @@ prettyEncode o =
   let prettyConfig = P.defConfig { P.confIndent = 2, P.confCompare = compare }
   in  P.encodePretty' prettyConfig o
 
-referenceConfig :: PartialConfig
-referenceConfig = PartialConfig $ toJSON emptyConfig
+referenceConfigFor :: PartialConfig -> PartialConfig
+referenceConfigFor baseConfig = PartialConfig . toJSON $ emptyConfig
+  { _configJiraConfig   = emptyJiraConfig   `ifExists` readBaseConfigKey (configKey "JiraConfig")
+  , _configStashConfig  = emptyStashConfig  `ifExists` readBaseConfigKey (configKey "StashConfig")
+  , _configGithubConfig = emptyGithubConfig `ifExists` readBaseConfigKey (configKey "GithubConfig")
+  }
+  where
+    readBaseConfigKey = flip readConfigKey baseConfig
+    ifExists = fmap . const
+
+-- Config Accessors
+
+takeJiraConfig :: (Monad m, MonadError AppException m) => Config -> m JiraConfig
+takeJiraConfig config = liftMaybe ex $ config^.configJiraConfig
+  where ex = ConfigException "JIRA config missing"
+
+takeStashConfig :: (Monad m, MonadError AppException m) => Config -> m StashConfig
+takeStashConfig config = liftMaybe ex $ config^.configStashConfig
+  where ex = ConfigException "Stash config missing"
+
+takeGithubConfig :: (Monad m, MonadError AppException m) => Config -> m GithubConfig
+takeGithubConfig config = liftMaybe ex $ config^.configGithubConfig
+  where ex = ConfigException "Github config missing"
 
 -- For easier reading of maps
 (~>) :: a -> b -> (a, b)
