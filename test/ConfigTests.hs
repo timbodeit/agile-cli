@@ -11,6 +11,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Char
 
 import           App.Config                           (emptyConfig,
+                                                       templateConfig,
                                                        emptyJiraConfig,
                                                        emptyStashConfig,
                                                        emptyGithubConfig,
@@ -64,6 +65,9 @@ tests =
     , testProperty
         "missingConfigKeys (empty reference object)"
         missingConfigKeysEmptyReferenceProp
+
+    , testCase "fillConfigKeys" testFillMissingConfigKeys
+    , testCase "fillAllConfigKeys" testFillAllMissingKeys
     ]
   ]
 
@@ -227,6 +231,28 @@ testBrokenJsonConfig = case parsePartialConfig "(no file)" brokenJson of
   Left _ -> assertFailure "Broken config JSON should result in a ConfigException."
   where
     brokenJson = "{\"foo\":\"bar\",[}"
+
+testFillMissingConfigKeys :: Assertion
+testFillMissingConfigKeys = do
+  missingConfigKeys reference testConfig @?= expectedMissingKeys
+  missingConfigKeys reference (fillMissingConfigKeys reference testConfig expectedMissingKeys) @?= []
+  where
+    testConfig = (PartialConfig $ toJSON emptyConfig)
+      & "JiraConfig.Username" ~~ "testuser"
+      & "JiraConfig.BaseUrl"  ~~ "http://example.com"
+    reference = testConfig
+      & "JiraConfig.Project"  ~~ "testproject"
+
+    expectedMissingKeys = [configKey "JiraConfig.Project"]
+    (~~) ck v o = writeConfigKey (configKey ck) o (String v)
+
+testFillAllMissingKeys :: Assertion
+testFillAllMissingKeys =
+  let keys = missingConfigKeys referenceConfig nullConfig
+  in fillMissingConfigKeys referenceConfig nullConfig keys @?= referenceConfig
+  where
+    referenceConfig = PartialConfig $ toJSON templateConfig
+    nullConfig      = PartialConfig $ object []
 
 -- Random Generation
 
