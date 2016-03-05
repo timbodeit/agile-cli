@@ -12,6 +12,7 @@ import           App.Config
 import           App.ConfigBuilder
 import           App.Git                    (BranchName (..), BranchStatus (..),
                                              IsBranchName,
+                                             RemoteBranchName (..),
                                              WorkingCopyStatus (..), liftGit,
                                              toBranchString, (</>))
 import qualified App.Git                    as Git
@@ -30,6 +31,7 @@ import           Data.Bool
 import           Data.Char
 import           Data.List
 import qualified Data.Map                   as Map
+import           Data.Maybe                 (fromJust)
 import           Data.String.Conversions
 import qualified Jira.API                   as Jira
 import           Options.Applicative
@@ -194,30 +196,17 @@ cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
       return $ issueStatus issue == Closed
 
 checkoutBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM ()
-checkoutBranchForIssueKey branchStrategy issueId issueBackend = checkoutLocalBranch `orElse` fetchRemoteBranch `orElse` createBranch
+checkoutBranchForIssueKey branchStrategy issueId issueBackend =
+  getCheckoutAction issueId issueBackend >>= \case
+    LocalBranch branch  -> liftGit $ Git.checkoutBranch branch
+    RemoteBranch branch -> liftGit $ Git.checkoutRemoteBranch branch
+    CreateBranch        -> createBranch
   where
-    checkoutLocalBranch = do
-      branch <- branchForIssueKey issueId
-      liftGit $ Git.checkoutBranch branch
-
     createBranch =
       liftIO (askYesNoWithDefault True "No local/remote branch found for this issue. Create new branch?") >>= \case
         False -> return ()
         True  -> createBranchForIssueKey branchStrategy issueId issueBackend
              >>= liftGit . Git.checkoutBranch
-
-    fetchRemoteBranch = do
-      gitFetch
-      remoteName     <- view configRemoteName <$> getConfig
-      remoteBranches <- filter (matchesRemote remoteName)
-                    <$> liftGit Git.getRemoteBranches
-      remoteBranch   <- find (matchesIssueKey issueId) remoteBranches
-                        `orThrow` branchNotFoundException
-      liftGit $ Git.checkoutRemoteBranch remoteBranch
-        where
-          matchesRemote remoteName remoteBranch = remoteName == show (Git.remoteName remoteBranch)
-          branchNotFoundException = UserInputException $
-                                    "Branch for issue not found: " ++ show issueId
 
 createBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM BranchName
 createBranchForIssueKey branchStrategy issueId issueBackend = withAsyncGitFetch $ \asyncFetch -> do
@@ -318,6 +307,31 @@ withIssue s k = withIssueId s $ \issueId backend -> do
 
 matchesIssueKey :: (IsIssueId i, IsBranchName b) => i -> b -> Bool
 matchesIssueKey issueKey branch = (show issueKey ++ "-") `isInfixOf` toBranchString branch
+
+-- Checkout Status
+
+data CheckoutAction = LocalBranch BranchName
+                    | RemoteBranch RemoteBranchName
+                    | CreateBranch
+                      deriving (Show, Eq)
+
+getCheckoutAction :: IssueBackend b => IssueId (Issue b) -> b -> AppM CheckoutAction
+getCheckoutAction issueId issueBackend =
+  let action = LocalBranch  <$$> localBranch
+          <||> RemoteBranch <$$> remoteBranch
+          <||> return (Just CreateBranch)
+  in  fromJust <$> action
+  where
+    localBranch = tryMaybe $ branchForIssueKey issueId
+    remoteBranch = do
+      gitFetch
+      remoteName     <- view configRemoteName <$> getConfig
+      remoteBranches <- filter (matchesRemote remoteName)
+                    <$> liftGit Git.getRemoteBranches
+      return $ find (matchesIssueKey issueId) remoteBranches
+      where
+        matchesRemote remoteName remoteBranch =
+          remoteName == show (Git.remoteName remoteBranch)
 
 -- Git Helpers
 
