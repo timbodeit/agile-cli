@@ -86,7 +86,7 @@ instance IssueBackend GithubConfig where
 
   getIssueById issueId ghConfig = do
     repoRef <- issueRepositoryRef ghConfig
-    fetchIssue repoRef issueId
+    fetchIssue ghConfig repoRef issueId
 
   makeIssueTransition (GithubIssueId issueNumber) transition ghConfig = do
     GithubRepoRef owner repo <- issueRepositoryRef ghConfig
@@ -155,7 +155,7 @@ issueSearchString s (GithubRepoRef owner repo) = s ++ " repo:" ++ owner ++ "/" +
 issueRepositoryRef :: GithubConfig -> AppM GithubRepoRef
 issueRepositoryRef ghConfig = do
   repoRef <- currentRepositoryRef $ Just ghConfig
-  repo <- fetchRepo repoRef
+  repo <- fetchRepo ghConfig repoRef
   let hasIssues = fromMaybe False $ GH.repoHasIssues repo
   let mParentRepo = forkedFromRepoRef repo
 
@@ -167,7 +167,7 @@ issueRepositoryRef ghConfig = do
 instance PullRequestBackend GithubConfig where
   createPullRequestUrl sourceBranch targetBranch ghConfig = do
     repoRef@(GithubRepoRef owner repo') <- currentRepositoryRef $ Just ghConfig
-    repo <- fetchRepo repoRef
+    repo <- fetchRepo ghConfig repoRef
 
     GithubRepoRef baseOwner _ <- case forkedFromRepoRef repo of
       Nothing            -> return repoRef
@@ -237,12 +237,22 @@ forkedFromRepoRef repo = do
 githubAuth :: GithubConfig -> GH.GithubAuth
 githubAuth = GH.GithubOAuth . view githubOAuthToken
 
-fetchRepo :: GithubRepoRef -> AppM GH.Repo
-fetchRepo (GithubRepoRef user repo) = liftGithubIO $ GH.repository (fromString user) (fromString repo)
+githubAuth' :: GithubConfig -> Maybe GH.GithubAuth
+githubAuth' config = GH.GithubOAuth <$> mtoken
+  where
+    mtoken = case config^.githubOAuthToken of
+      ""    -> Nothing
+      token -> Just token
 
-fetchIssue :: GithubRepoRef -> GithubIssueId -> AppM GH.Issue
-fetchIssue (GithubRepoRef owner repo) (GithubIssueId issueId) =
-  liftGithubIO $ GH.issue (fromString owner) (fromString repo) (GH.mkId Proxy issueId)
+fetchRepo :: GithubConfig -> GithubRepoRef -> AppM GH.Repo
+fetchRepo ghConfig (GithubRepoRef user repo) =
+  let auth = githubAuth' ghConfig
+  in  liftGithubIO $ GH.repository' auth (fromString user) (fromString repo)
+
+fetchIssue :: GithubConfig -> GithubRepoRef -> GithubIssueId -> AppM GH.Issue
+fetchIssue ghConfig (GithubRepoRef owner repo) (GithubIssueId issueId) =
+  let auth = githubAuth' ghConfig
+  in liftGithubIO $ GH.issue' auth (fromString owner) (fromString repo) (GH.mkId Proxy issueId)
 
 liftGithub :: Either GH.Error a -> Either AppException a
 liftGithub = mapLeft (IOException . show)
