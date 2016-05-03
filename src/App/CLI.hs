@@ -239,7 +239,12 @@ createBranchForIssueKey issueId issueBackend = withAsyncGitFetch $ \asyncFetch -
   liftGit $ Git.newBranch branchName (Just baseBranchName)
   return branchName
   where
-    toBranchName = map (\c -> if isSpace c then '-' else c)
+    toBranchName "" = ""
+    toBranchName (c:cs)
+      | isSpace c    = '-':bns
+      | isAlphaNum c = c:bns
+      | otherwise    = bns
+      where bns = toBranchName cs
     generateName = toBranchName . map toLower . take 30
 
 openPullRequest :: BranchName -> AppM ()
@@ -362,4 +367,3 @@ handleAppException exception = do
   exitWith $ ExitFailure 1
   where
     hasErrorField key (Jira.BadRequestInfo _ errorMap) = Map.member key errorMap
-
