@@ -66,16 +66,16 @@ runCLI options = case options^.cliCommand of
     else do
       issues <- searchIssues searchOptions s' issueBackend
       mapM_ (liftIO . putStrLn . summarizeOneLine) issues
-  NewCommand start issueTypeString summary -> run $ withIssueBackend $ \issueBackend -> do
+  NewCommand branchStrategy start issueTypeString summary -> run $ withIssueBackend $ \issueBackend -> do
     issueType <- parseIssueType' issueTypeString issueBackend
     let issueCreationData = makeIssueCreationData issueType summary issueBackend
     issueId <- createIssue issueCreationData issueBackend
     openInBrowser =<< issueUrl issueId issueBackend
     liftIO $ print issueId
-    when start $ startWorkOnIssue issueId issueBackend
-  StartCommand issueString ->
+    when start $ startWorkOnIssue branchStrategy issueId issueBackend
+  StartCommand branchStrategy issueString ->
     run $ withIssueId issueString $ \issueId issueBackend ->
-      startWorkOnIssue issueId issueBackend
+      startWorkOnIssue branchStrategy issueId issueBackend
   StopCommand issueString ->
     run $ withIssueId issueString stopProgress
   ResolveCommand issueString ->
@@ -84,8 +84,8 @@ runCLI options = case options^.cliCommand of
     run $ withIssueId issueString close
   ReopenCommand issueString ->
     run $ withIssueId issueString reopen
-  CheckoutCommand issueString ->
-    run $ withIssueId (Just issueString) checkoutBranchForIssueKey
+  CheckoutCommand branchStrategy issueString ->
+    run $ withIssueId (Just issueString) (checkoutBranchForIssueKey branchStrategy)
   CreatePullRequestCommand issueString -> run $ do
     let getIssueBranch = withIssueId issueString $ const . branchForIssueKey
     sourceBranch <- getIssueBranch <|||> getCurrentBranch'
@@ -107,9 +107,9 @@ runCLI options = case options^.cliCommand of
 printIssue :: IsIssue i => i -> AppM ()
 printIssue = liftIO . putStrLn . summarize
 
-startWorkOnIssue :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
-startWorkOnIssue issueId issueBackend = do
-  branch <- createBranchForIssueKey issueId issueBackend
+startWorkOnIssue :: IssueBackend i => BranchStrategy -> IssueId (Issue i) -> i -> AppM ()
+startWorkOnIssue branchStrategy issueId issueBackend = do
+  branch <- createBranchForIssueKey branchStrategy issueId issueBackend
   liftGit $ Git.checkoutBranch branch
   startProgress' issueId issueBackend
 
@@ -193,8 +193,8 @@ cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
       issue   <- getIssueById issueId backend
       return $ issueStatus issue == Closed
 
-checkoutBranchForIssueKey :: IssueBackend b => IssueId (Issue b) -> b -> AppM ()
-checkoutBranchForIssueKey issueId issueBackend = checkoutLocalBranch `orElse` fetchRemoteBranch `orElse` createBranch
+checkoutBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM ()
+checkoutBranchForIssueKey branchStrategy issueId issueBackend = checkoutLocalBranch `orElse` fetchRemoteBranch `orElse` createBranch
   where
     checkoutLocalBranch = do
       branch <- branchForIssueKey issueId
@@ -203,7 +203,8 @@ checkoutBranchForIssueKey issueId issueBackend = checkoutLocalBranch `orElse` fe
     createBranch =
       liftIO (askYesNoWithDefault True "No local/remote branch found for this issue. Create new branch?") >>= \case
         False -> return ()
-        True  -> createBranchForIssueKey issueId issueBackend >>= liftGit . Git.checkoutBranch
+        True  -> createBranchForIssueKey branchStrategy issueId issueBackend
+             >>= liftGit . Git.checkoutBranch
 
     fetchRemoteBranch = do
       gitFetch
@@ -214,12 +215,12 @@ checkoutBranchForIssueKey issueId issueBackend = checkoutLocalBranch `orElse` fe
                         `orThrow` branchNotFoundException
       liftGit $ Git.checkoutRemoteBranch remoteBranch
         where
-          matchesRemote remote = isPrefixOf (remote ++ "/") . show . Git.remoteName
+          matchesRemote remoteName remoteBranch = remoteName == show (Git.remoteName remoteBranch)
           branchNotFoundException = UserInputException $
                                     "Branch for issue not found: " ++ show issueId
 
-createBranchForIssueKey :: IssueBackend b => IssueId (Issue b) -> b -> AppM BranchName
-createBranchForIssueKey issueId issueBackend = withAsyncGitFetch $ \asyncFetch -> do
+createBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM BranchName
+createBranchForIssueKey branchStrategy issueId issueBackend = withAsyncGitFetch $ \asyncFetch -> do
   issue <- getIssueById issueId issueBackend
   let issueTypeName = show $ issueType issue
   liftIO . putStrLn $ summarize issue
@@ -227,16 +228,20 @@ createBranchForIssueKey issueId issueBackend = withAsyncGitFetch $ \asyncFetch -
                   <$> askWithDefault (generateName $ suggestedBranchName issue)
                       "Short description for branch?"
   config <- getConfig
-  let remote = config^.configRemote
-  devBranch <- liftGit $ config^.configDevelopBranch.to Git.parseBranchName'
-  let baseBranchName = remote </> devBranch
-
   let branchPrefix = config^.configBranchPrefixMap.at issueTypeName.non (config^.configDefaultBranchPrefix)
   let branchSuffix = show issueId ++ "-" ++ branchDescription
   branchName <- liftGit . Git.parseBranchName' $ branchPrefix ++ branchSuffix
 
   liftIO $ wait asyncFetch
-  liftGit $ Git.newBranch branchName (Just baseBranchName)
+
+  case branchStrategy of
+    BranchOffCurrent -> liftGit $ Git.newBranch branchName (Nothing :: Maybe BranchName)
+    BranchOffRemoteDevelop -> do
+      let remote = config^.configRemote
+      devBranch <- liftGit $ config^.configDevelopBranch.to Git.parseBranchName'
+      let baseBranchName = remote </> devBranch
+      liftGit $ Git.newBranch branchName (Just baseBranchName)
+
   return branchName
   where
     toBranchName "" = ""
