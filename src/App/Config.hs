@@ -194,8 +194,8 @@ handleMissingKeys keys configPath = do
       rawConfig <- liftIO $ readFile configPath
       existingPartialConfig <- hoistEither $ parsePartialConfig configPath rawConfig
 
-      let defaultPartialConfig = PartialConfig $ toJSON defaultConfig
-          filledConfig         = fillMissingConfigKeys defaultPartialConfig existingPartialConfig keys
+      let templatePartialConfig = PartialConfig $ toJSON templateConfig
+          filledConfig         = fillMissingConfigKeys templatePartialConfig existingPartialConfig keys
       liftIO $ LBS.writeFile configPath (prettyEncode filledConfig)
       EitherT readConfig'
 
