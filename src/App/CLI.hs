@@ -235,10 +235,13 @@ createBranchForIssueKey branchStrategy issueId issueBackend = withAsyncGitFetch 
   where
     toBranchName "" = ""
     toBranchName (c:cs)
-      | isSpace c    = '-':bns
-      | isAlphaNum c = c:bns
-      | otherwise    = bns
-      where bns = toBranchName cs
+      | isConnectingChar c = '-':bns
+      | isAlphaNum c       = c:bns
+      | otherwise          = bns
+      where
+        isConnectingChar c = isSpace c || c `elem` ['-', '_']
+        bns = toBranchName cs
+
     generateName = toBranchName . map toLower . take 30
 
 openPullRequest :: BranchName -> AppM ()
