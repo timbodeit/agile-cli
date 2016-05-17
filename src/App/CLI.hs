@@ -97,12 +97,11 @@ runCLI options = case options^.cliCommand of
     case finishType of
       FinishWithPullRequest -> finishIssueWithPullRequest
       FinishWithMerge       -> finishIssueWithMerge
-  CommitCommand gitOptions -> run $ withIssueBackend $ \backend -> do
-    issueKey <- currentIssueKey backend
+  CommitCommand issueString gitOptions -> run $ withIssueId issueString $ \issueId _ -> do
     liftIO
       $ withSystemTempFile "agile-cli.gittemplate"
       $ \tempPath tempHandle -> do
-        hPutStr tempHandle $ show issueKey ++ " "
+        hPutStr tempHandle $ show issueId ++ " "
         hClose tempHandle
         rawSystem "git" $ ["commit", "-t", cs tempPath, "-e"] ++ gitOptions
 

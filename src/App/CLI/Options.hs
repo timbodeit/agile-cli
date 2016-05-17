@@ -38,7 +38,7 @@ data CLICommand = InitCommand
                 | CheckoutCommand BranchStrategy String
                 | CreatePullRequestCommand (Maybe String)
                 | FinishCommand FinishType (Maybe String)
-                | CommitCommand [String]
+                | CommitCommand (Maybe String) [String]
                 deriving (Show, Eq)
 
 data CLIOptions = CLIOptions
@@ -159,7 +159,13 @@ finishCommandParser = FinishCommand
 
 commitCommandParser :: Parser CLICommand
 commitCommandParser = CommitCommand
-  <$> many (strArgument (help "Additional options to git commit"))
+  <$> optional (strOption ( short 'i'
+                         <> long "issue"
+                         <> metavar "ISSUE ID"
+                         <> help "Issue ID"
+                          )
+               )
+  <*> many (strArgument (help "Additional options to git commit"))
 
 issueArgParser :: Parser (Maybe String)
 issueArgParser = optional $ strArgument
