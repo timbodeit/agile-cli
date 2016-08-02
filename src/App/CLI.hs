@@ -166,7 +166,8 @@ configTest = runAppIO $ do
     putStrLn ""
     putStrLn "> Putting together config files..."
 
-  EitherT readConfig'
+  (_, config) <- EitherT readConfig'
+  liftIO . putStrLn . cs $ prettyEncode config
 
   liftIO $ putStrLn "> Testing issue backend"
   EitherT $ runApp' $ withIssueBackend testBackend
