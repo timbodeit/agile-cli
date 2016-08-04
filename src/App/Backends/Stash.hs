@@ -7,7 +7,6 @@ import           App.Util
 
 import           Control.Lens
 import           Data.List               (intercalate)
-import           Data.String.Conversions
 
 instance PullRequestBackend StashConfig where
   createPullRequestUrl sourceBranch targetBranch stashConfig =

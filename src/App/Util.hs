@@ -35,7 +35,7 @@ liftMaybe :: (MonadError e m) => e -> Maybe a -> m a
 liftMaybe ex = maybe (throwError ex) return
 
 tryMaybe :: (MonadError e m) => m a -> m (Maybe a)
-tryMaybe m = liftM Just m `orElse` return Nothing
+tryMaybe m = fmap Just m `orElse` return Nothing
 
 hoistMaybe :: Monad m => Maybe a -> MaybeT m a
 hoistMaybe = MaybeT . return
@@ -158,7 +158,6 @@ userChoice question answers = do
     tryAgain = putStrLn "Invalid answer." >> userChoice question answers
     renderAnswers = zipWith renderAnswer [1..] $ map fst answers
     renderAnswer i answer = "[" ++ show i ++ "] " ++ answer
-
 
 runUserChoice :: String -> [(String, IO a)] -> IO a
 runUserChoice question = join . userChoice question

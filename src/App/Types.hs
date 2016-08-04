@@ -5,7 +5,6 @@
 
 module App.Types where
 
-import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.Catch
 import           Control.Monad.Except

@@ -8,7 +8,6 @@ import           App.ConfigBuilder
 import           App.Types
 import           App.Util
 
-import           Control.Applicative
 import           Control.Arrow              ((&&&))
 import           Control.Lens               hiding (set')
 import           Control.Monad              (when)

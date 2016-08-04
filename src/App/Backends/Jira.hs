@@ -15,7 +15,6 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.List                 (find, intercalate)
-import           Data.String.Conversions
 import qualified Jira.API                  as Jira
 import           Text.Parsec               (parse)
 import           Text.Read
@@ -111,7 +110,7 @@ instance IssueBackend JiraConfig where
 -- Search options
 
 toJql :: SearchOptions -> String -> JiraConfig -> String
-toJql (SearchOptions allProjects onlyMyIssues inBrowser) jql jiraConfig =
+toJql (SearchOptions allProjects onlyMyIssues _) jql jiraConfig =
   let optionConditions = wrapParens . intercalate " AND " $
                          ["project = "  ++ jiraConfig^.jiraProject  | not allProjects]
                       ++ ["assignee = " ++ jiraConfig^.jiraUsername | onlyMyIssues]

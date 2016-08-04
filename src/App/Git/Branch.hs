@@ -35,7 +35,6 @@ import           Control.Monad.Trans.Maybe
 import           Data.Char
 import           Data.List                 (find, isInfixOf, isSuffixOf)
 import           Data.Maybe                (mapMaybe)
-import           Data.String
 import           Data.String.Conversions
 import qualified Data.Text                 as T
 import           Text.RegexPR

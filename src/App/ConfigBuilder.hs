@@ -5,7 +5,6 @@ module App.ConfigBuilder where
 
 import           Prelude                 hiding (concatMap, foldl, foldr)
 
-import           Control.Applicative
 import           Control.Lens
 import           Data.Aeson
 import           Data.Aeson.Lens

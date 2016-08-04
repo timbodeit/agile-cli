@@ -20,12 +20,10 @@ import           App.InitialSetup
 import           App.Types
 import           App.Util
 
-import           Control.Applicative        hiding ((<|>))
 import           Control.Concurrent.Async
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import           Control.Monad.Reader
 import           Control.Monad.Trans.Either
 import           Data.Bool
 import           Data.Char
@@ -97,7 +95,7 @@ runCLI options = case options^.cliCommand of
     case finishType of
       FinishWithPullRequest -> finishIssueWithPullRequest
       FinishWithMerge       -> finishIssueWithMerge
-  CommitCommand issueString gitOptions -> run $ withIssueId issueString $ \issueId _ -> do
+  CommitCommand issueString gitOptions -> run $ withIssueId issueString $ \issueId _ ->
     liftIO
       $ withSystemTempFile "agile-cli.gittemplate"
       $ \tempPath tempHandle -> do
@@ -273,11 +271,6 @@ resolveSearch s issueBackend = do
   searchMap <- getSearchAliasMap issueBackend
   return . trim $ Map.findWithDefault s s searchMap
 
-currentIssueKey :: IssueBackend i => i -> AppM (IssueId (Issue i))
-currentIssueKey backend = do
-  branch <- getCurrentBranch'
-  extractIssueId branch backend
-
 branchForIssueKey :: IsIssueId i => i -> AppM BranchName
 branchForIssueKey issueKey = do
   branches <- liftGit Git.getLocalBranches
@@ -300,9 +293,6 @@ withIssueId (Just issueString) k = withIssueBackend $ \backend -> do
   issueId <- parseIssueId issueString backend
   k issueId backend
 
-withIssueId' :: Maybe String -> (forall i. IssueBackend i => IssueId (Issue i) -> ReaderT i AppM a) -> AppM a
-withIssueId' issueString r = withIssueId issueString $ \issueId backend -> runReaderT (r issueId) backend
-
 withIssue :: Maybe String -> (forall i. IssueBackend i => Issue i -> i -> AppM a) -> AppM a
 withIssue s k = withIssueId s $ \issueId backend -> do
   issue <- getIssueById issueId backend
@@ -319,7 +309,7 @@ data CheckoutAction = LocalBranch BranchName
                       deriving (Show, Eq)
 
 getCheckoutAction :: IssueBackend b => IssueId (Issue b) -> b -> AppM CheckoutAction
-getCheckoutAction issueId issueBackend =
+getCheckoutAction issueId _ =
   let action = LocalBranch  <$$> localBranch
           <||> RemoteBranch <$$> remoteBranch
           <||> return (Just CreateBranch)

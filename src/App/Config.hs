@@ -8,7 +8,6 @@ import           App.ConfigBuilder
 import           App.Types
 import           App.Util
 
-import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad.Except       hiding (forM_)

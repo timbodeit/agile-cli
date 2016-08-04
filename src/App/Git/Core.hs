@@ -10,7 +10,6 @@ import           App.Types                  hiding (GitException)
 import qualified App.Types                  (AppException (..))
 import           App.Util
 
-import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
@@ -64,9 +63,9 @@ git' command' options = shelly' $ (,,)
 
 withTempStash :: GitM a -> GitM a
 withTempStash m = do
-  git "stash" []
+  void $ git "stash" []
   r <- m
-  git "stash" ["pop"]
+  void $ git "stash" ["pop"]
   return r
 
 getRev :: String -> GitM String

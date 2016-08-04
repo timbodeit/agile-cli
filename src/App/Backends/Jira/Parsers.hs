@@ -4,7 +4,6 @@ import           App.Config
 import           App.Types
 import           App.Util
 
-import           Control.Applicative     hiding ((<|>))
 import           Control.Lens
 import           Control.Monad
 import           Data.Either.Combinators
