@@ -5,17 +5,14 @@ module IntegrationTests (tests) where
 
 import           Test.Framework
 import           Test.Framework.Providers.HUnit
-import           Test.Framework.Providers.QuickCheck2
-import           Test.HUnit                           hiding (Test)
-import           Test.QuickCheck
-import           Test.QuickCheck.Instances.Char       hiding (bracket)
+import           Test.HUnit                     hiding (Test)
 
 import           App.Git
-import           Jira.API
 
 import           Control.Exception
+import           Control.Monad                  (void)
 import           Data.String
-import           Shelly                               hiding (FilePath)
+import           Shelly                         hiding (FilePath)
 import           System.Directory
 import           System.IO.Temp
 
@@ -29,7 +26,7 @@ tests =
 
 branchStatusTests :: Assertion
 branchStatusTests = withGitTestEnvironment $ \dir -> do
-  let localShelly = shelly' . chdir (fromString dir)
+  let localShelly = void . shelly' . chdir (fromString dir)
 
   -- Set up a local feature branch
   let branchName = "feature/" ++ show issueKey ++ "-branch-status-test"
@@ -56,7 +53,7 @@ branchStatusTests = withGitTestEnvironment $ \dir -> do
 
   -- Push to a non-tracking remote branch on other remote
   withSystemTempDirectory "agile-test-other-remote" $ \otherRemoteDir -> do
-    shelly' . chdir (fromString otherRemoteDir) $ run "git" ["init", "--bare"]
+    void . shelly' . chdir (fromString otherRemoteDir) $ run "git" ["init", "--bare"]
     localShelly $ run "git" ["remote", "add", "other", fromString otherRemoteDir]
     localShelly $ run "git" ["push", "other", fromString branchArg]
     assertCurrentBranchStatus NewCommits
@@ -92,7 +89,7 @@ branchStatusTests = withGitTestEnvironment $ \dir -> do
 
 workingCopyStatusTests :: Assertion
 workingCopyStatusTests = withGitTestEnvironment $ \dir -> do
-  let localShelly = shelly' . chdir (fromString dir)
+  let localShelly = void . shelly' . chdir (fromString dir)
 
   -- Make sure we are clean
   localShelly $ run "git" ["commit", "--allow-empty", "-am", "Second commit"]
@@ -123,14 +120,14 @@ withGitTestEnvironment :: (FilePath -> IO a) -> IO a
 withGitTestEnvironment f =
   withSystemTempDirectory "agile-test" $ \dir ->
     withSystemTempDirectory "agile-test-remote" $ \remoteDir -> do
-      shelly' . chdir (fromString remoteDir) $ run "git" ["init", "--bare"]
-      shelly' . chdir (fromString dir) $ do
-        run "git" ["init"]
-        run "git" ["remote", "add", "origin", fromString remoteDir]
+      void . shelly' . chdir (fromString remoteDir) $ run "git" ["init", "--bare"]
+      void . shelly' . chdir (fromString dir) $ do
+        void $ run "git" ["init"]
+        void $ run "git" ["remote", "add", "origin", fromString remoteDir]
         writefile (fromString "testfile") "agile test"
-        run "git" ["add", "testfile"]
-        run "git" ["commit", "-am", "Initial commit"]
-        run "git" ["push", "-u", "origin", "HEAD"]
+        void $ run "git" ["add", "testfile"]
+        void $ run "git" ["commit", "-am", "Initial commit"]
+        void $ run "git" ["push", "-u", "origin", "HEAD"]
       bracket getCurrentDirectory setCurrentDirectory . const $ do
         setCurrentDirectory dir
         f dir

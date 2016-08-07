@@ -53,16 +53,19 @@ testTrim = do
   "foo" @=? trim "   foo "
   "foo bar" @=? trim "   foo bar "
 
+trimPrefixProp :: Property
 trimPrefixProp =
   forAll (listOf (oneof [whitespace, space])) $ \prefix ->
   forAll (listOf1 notSpace) $ \w ->
   trim (prefix ++ w) == w
 
+trimPostfixProp :: Property
 trimPostfixProp =
   forAll (listOf (oneof [whitespace, space])) $ \postfix ->
   forAll (listOf1 notSpace) $ \w ->
   trim (w ++ postfix) == w
 
+trimPrefixPostfixProp :: Property
 trimPrefixPostfixProp =
   forAll (listOf (oneof [whitespace, space])) $ \prefix ->
   forAll (listOf (oneof [whitespace, space])) $ \postfix ->

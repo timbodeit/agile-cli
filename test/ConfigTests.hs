@@ -20,7 +20,6 @@ import           App.Config                           (emptyConfig,
 import           App.ConfigBuilder
 import           App.Types
 
-import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Data.Aeson
@@ -108,7 +107,6 @@ testMissingJiraConfigKeys = do
   missingConfigKeys withJiraConfig withJiraConfig @?= []
   missingConfigKeys withJiraConfig withBrokenJiraConfig @?= [brokenKey]
   where
-    baseConfig = PartialConfig . toJSON $ emptyConfig
     withJiraConfig = PartialConfig . toJSON $ emptyConfig { _configJiraConfig = Just emptyJiraConfig }
     withBrokenJiraConfig = let (PartialConfig c) = withJiraConfig
                            in  PartialConfig $ c & keySetter brokenKey .~ Nothing
@@ -119,7 +117,6 @@ testMissingStashConfigKeys = do
   missingConfigKeys withStashConfig withStashConfig @?= []
   missingConfigKeys withStashConfig withBrokenStashConfig @?= [brokenKey]
   where
-    baseConfig = PartialConfig . toJSON $ emptyConfig
     withStashConfig = PartialConfig . toJSON $ emptyConfig { _configStashConfig = Just emptyStashConfig }
     withBrokenStashConfig = let (PartialConfig c) = withStashConfig
                            in  PartialConfig $ c & keySetter brokenKey .~ Nothing
@@ -130,7 +127,6 @@ testMissingGithubConfigKeys = do
   missingConfigKeys withGithubConfig withGithubConfig @?= []
   missingConfigKeys withGithubConfig withBrokenGithubConfig @?= [brokenKey]
   where
-    baseConfig = PartialConfig . toJSON $ emptyConfig
     withGithubConfig = PartialConfig . toJSON $ emptyConfig { _configGithubConfig = Just emptyGithubConfig }
     withBrokenGithubConfig = let (PartialConfig c) = withGithubConfig
                            in  PartialConfig $ c & keySetter brokenKey .~ Nothing

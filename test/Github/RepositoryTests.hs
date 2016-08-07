@@ -7,10 +7,7 @@ import           Data.String
 import qualified Github.Data                          as GH
 import           Test.Framework
 import           Test.Framework.Providers.HUnit
-import           Test.Framework.Providers.QuickCheck2
 import           Test.HUnit                           hiding (Test)
-import           Test.QuickCheck
-import           Test.QuickCheck.Instances.Char
 
 import           App.Backends.Github
 

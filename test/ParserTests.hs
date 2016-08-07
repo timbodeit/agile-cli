@@ -26,40 +26,40 @@ tests =
     ]
   ]
 
+issueNumberParserPostiveIntProp :: Positive Int -> Bool
 issueNumberParserPostiveIntProp (Positive n) =
   P.parse issueNumberParser "" (show n) == Right (IssueNumber n)
 
+issueNumberParserNegativeIntProp :: Property
 issueNumberParserNegativeIntProp = forAll negativeInt $ \n ->
   isLeft $ P.parse issueNumberParser "" (show n)
-
-issueNumberParserNonNumberProp = forAll (listOf notDigit) $ \s ->
-  isLeft $ P.parse issueNumberParser "" s
 
 testIssueKeyParserDashPrefix :: Assertion
 testIssueKeyParserDashPrefix =
   assertBool "Parsing should fail for leading dash" $
     isLeft $ P.parse issueKeyParser "" "-123"
 
+issueKeyParserProp :: Positive Int -> Property
 issueKeyParserProp (Positive n) = forAll (listOf1 upperAlpha) $ \project ->
   P.parse issueKeyParser "" (project ++ "-" ++ show n) ==
     Right (IssueKey project (IssueNumber n))
 
+issueKeyParserNegativeProp :: Property
 issueKeyParserNegativeProp =
   forAll (arbitrary `suchThat` any (not . isAlpha)) $ \project ->
   forAll (arbitrary `suchThat` (not . all isDigit))   $ \n ->
   isLeft $ P.parse issueKeyParser "" (project ++ "-" ++ n)
 
+issueKeyParserWithDefaultProjectWithPrefixProp :: String -> Positive Int -> Property
 issueKeyParserWithDefaultProjectWithPrefixProp s (Positive n) =
   forAll (listOf1 upperAlpha) $ \project ->
   P.parse (issueKeyParserWithDefaultProject s) "" (project ++ "-" ++ show n) ==
     Right (IssueKey project (IssueNumber n))
 
+issueKeyParserWithDefaultProjectWithoutPrefixProp :: String -> Positive Int -> Bool
 issueKeyParserWithDefaultProjectWithoutPrefixProp s (Positive n) =
   P.parse (issueKeyParserWithDefaultProject s) "" (show n) ==
     Right (IssueKey s (IssueNumber n))
-
-notDigit :: Gen Char
-notDigit = arbitrary `suchThat` (not . isDigit)
 
 negativeInt :: Gen Int
 negativeInt = arbitrary `suchThat` (< 0)

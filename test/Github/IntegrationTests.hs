@@ -5,22 +5,20 @@ module Github.IntegrationTests (tests) where
 
 import           Test.Framework
 import           Test.Framework.Providers.HUnit
-import           Test.Framework.Providers.QuickCheck2
-import           Test.HUnit                           hiding (Test)
+import           Test.HUnit                     hiding (Test)
 
 import           App.Backends
-import           App.CLI
 import           App.CLI.Options
 import           App.Config
-import           App.Git.Branch                       (parseBranchName)
+import           App.Git.Branch                 (parseBranchName)
 import           App.Types
 
 import           Control.Exception
 import           Control.Lens
-import           Data.Proxy
-import           Data.String                          (fromString)
-import qualified Github.Issues                        as GH
-import           Shelly                               hiding (FilePath)
+import           Control.Monad                  (void)
+import           Data.String                    (fromString)
+import qualified Github.Issues                  as GH
+import           Shelly                         hiding (FilePath)
 import           System.Directory
 import           System.IO.Temp
 
@@ -56,7 +54,7 @@ getIssueByBranchNameTest = withTestEnvironment $ \_ -> do
 getIssueForFixedRepoTest :: Assertion
 getIssueForFixedRepoTest = withTestEnvironment $ \_ -> do
   let Just ghConfig = testConfig^.configGithubConfig
-  shelly . silently $ run "git" ["remote", "remove", "origin"]
+  void . shelly . silently $ run "git" ["remote", "remove", "origin"]
   runApp' testConfig (getIssueById (GithubIssueId 1) ghConfig) >>= \case
     Left _  -> return ()
     Right _ -> assertFailure "Should not be able to fetch issue"
@@ -86,9 +84,9 @@ assertTestIssue issue = do
 withTestEnvironment :: (FilePath -> IO a) -> IO a
 withTestEnvironment f =
   withSystemTempDirectory "agile-test" $ \dir -> do
-    shelly . silently . chdir (fromString dir) $ do
-      run "git" ["init"]
-      run "git" ["remote", "add", "origin", "https://github.com/dsmatter/testing-repo"]
+    void . shelly . silently . chdir (fromString dir) $ do
+      void $ run "git" ["init"]
+      void $ run "git" ["remote", "add", "origin", "https://github.com/dsmatter/testing-repo"]
     bracket getCurrentDirectory setCurrentDirectory . const $ do
       setCurrentDirectory dir
       f dir
