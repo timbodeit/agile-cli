@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE LambdaCase #-}
 
 module App.Backends.Jira (IssueBackend(..), IsIssue(..), IsIssueId()) where
 
@@ -75,6 +76,15 @@ instance IssueBackend JiraConfig where
     where
       parseException = UserInputException $ "Unable to parse issue ID from: "
                                          ++ toBranchString branch
+
+  activeIssueId config =
+    searchIssues opts "status = \"In Progress\"" config >$< \case
+      [issue] -> Just $ issueId issue
+      _       -> Nothing
+      where opts = SearchOptions { searchOverAllProjects = False
+                                 , searchOnlyUserIssues  = True
+                                 , searchOnWebsite       = False
+                                 }
 
   toIssueTypeIdentifier = const . Jira.IssueTypeName
 

@@ -6,7 +6,7 @@
 
 module App.CLI (execCLI) where
 
-import           App.Backends               hiding (issueId)
+import           App.Backends
 import           App.CLI.Options
 import           App.Config
 import           App.ConfigBuilder
@@ -287,8 +287,15 @@ startProgress' issueId backend = do
 withIssueId :: Maybe String -> (forall i. IssueBackend i => IssueId (Issue i) -> i -> AppM a) -> AppM a
 withIssueId Nothing k = withIssueBackend $ \backend -> do
   branch  <- getCurrentBranch'
-  issueId <- extractIssueId branch backend
+  issueId <- extractIssueId branch backend <|||> getActiveIssueId backend
   k issueId backend
+  where
+    getActiveIssueId backend = activeIssueId backend >>= \case
+      Nothing -> throwError $ UserInputException "No distinct active issue"
+      Just issueId -> do
+        liftIO . putStrLn $ "Using active issue: " ++ show issueId
+        return issueId
+
 withIssueId (Just issueString) k = withIssueBackend $ \backend -> do
   issueId <- parseIssueId issueString backend
   k issueId backend

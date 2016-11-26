@@ -113,6 +113,9 @@ instance IssueBackend GithubConfig where
     GithubIssueId <$> readMaybe s
     where ex = IOException $ "Unable to extract issue ID from branch: " ++ show branch
 
+  activeIssueId _ =
+    return Nothing
+
   toIssueTypeIdentifier s _ = s
 
   getAvailableIssueTypes _ = return [GithubIssueType "(Any string)"]
