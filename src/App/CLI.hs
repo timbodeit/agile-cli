@@ -1,232 +1,388 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE Rank2Types                #-}
 
-module App.CLI (dispatch) where
+module App.CLI (execCLI) where
 
+import           App.Backends
+import           App.CLI.Options
 import           App.Config
-import           App.CLI.Parsers
-import           App.Git
+import           App.ConfigBuilder
+import           App.Git                    (BranchName (..), BranchStatus (..),
+                                             IsBranchName,
+                                             RemoteBranchName (..),
+                                             WorkingCopyStatus (..), liftGit,
+                                             toBranchString, (</>))
+import qualified App.Git                    as Git
 import           App.InitialSetup
-import           App.Stash
 import           App.Types
 import           App.Util
 
-import           Control.Applicative        hiding ((<|>))
-import           Control.Exception
+import           Control.Concurrent.Async
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Either
-import           Data.Aeson
+import           Data.Bool
 import           Data.Char
-import           Data.Either.Combinators
-import           Data.Git
 import           Data.List
-import           Data.Maybe
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (fromJust)
 import           Data.String.Conversions
-import           Data.Typeable
-import           Jira.API                   hiding (getConfig)
-import           System.Directory
-import           System.Environment
+import qualified Jira.API                   as Jira
+import           Options.Applicative
+import           System.Exit
+import           System.IO
+import           System.IO.Temp
 import           System.Process
-import           Text.Parsec
-import           Text.Parsec.Char
-import           Text.Read
-import           Text.RegexPR
 
-dispatch :: [String] -> IO ()
-dispatch [] = putStrLn "Usage: jira [global options] <command> [command options]"
-dispatch ("init" : _)       = doInitSetup >> configTest
-dispatch ("test" : _)       = configTest
+execCLI :: IO ()
+execCLI =
+  let parser = info (helper <*> optionParser) fullDesc
+  in execParser parser >>= runCLI
 
-dispatch ("show" : args)    = handleShowIssue args
-dispatch ("open" : args)    = handleOpenIssue args
-dispatch ("myopen" : args)  = handleMyOpen
-dispatch ("search" : args)  = handleSearch args
+runCLI :: CLIOptions -> IO ()
+runCLI options = case options^.cliCommand of
+  InitCommand ->
+    runInitialConfiguration
+  ConfigTestCommand ->
+    configTest
+  ShowIssueTypesCommand ->
+    showIssueTypes
+  CleanupBranchesCommand ->
+    cleanupLocalBranches
+  ShowCommand issueString ->
+    run $ withIssue issueString $ const . printIssue
+  OpenCommand issueString ->
+    run $ withIssueId issueString $ \issueId -> openInBrowser <=< issueUrl issueId
+  SearchCommand searchOptions s -> run $ withIssueBackend $ \issueBackend -> do
+    s' <- resolveSearch s issueBackend
 
-dispatch ("new" : args)     = handleCreateIssue args
-dispatch ("start" : args)   = handleStartIssue args
-dispatch ("stop" : args)    = handleStopProgress args
-dispatch ("resolve" : args) = handleResolveIssue args
-dispatch ("close" : args)   = handleCloseIssue args
-dispatch ("reopen" : args)  = handleReopenIssue args
+    if searchOnWebsite searchOptions
+    then
+      openInBrowser =<< searchUrl searchOptions s' issueBackend
+    else do
+      issues <- searchIssues searchOptions s' issueBackend
+      mapM_ (liftIO . putStrLn . summarizeOneLine) issues
+  NewCommand branchStrategy start issueTypeString summary -> run $ withIssueBackend $ \issueBackend -> do
+    issueType <- parseIssueType' issueTypeString issueBackend
+    let issueCreationData = makeIssueCreationData issueType summary issueBackend
+    issueId <- createIssue issueCreationData issueBackend
+    openInBrowser =<< issueUrl issueId issueBackend
+    liftIO $ print issueId
+    when start $ startWorkOnIssue branchStrategy issueId issueBackend
+  StartCommand branchStrategy issueString ->
+    run $ withIssueId issueString $ \issueId issueBackend ->
+      startWorkOnIssue branchStrategy issueId issueBackend
+  StopCommand issueString ->
+    run $ withIssueId issueString stopProgress
+  ResolveCommand issueString ->
+    run $ withIssueId issueString resolve
+  CloseCommand issueString ->
+    run $ withIssueId issueString close
+  ReopenCommand issueString ->
+    run $ withIssueId issueString reopen
+  CheckoutCommand branchStrategy issueString ->
+    run $ withIssueId (Just issueString) (checkoutBranchForIssueKey branchStrategy)
+  CreatePullRequestCommand issueString -> run $ do
+    let getIssueBranch = withIssueId issueString $ const . branchForIssueKey
+    sourceBranch <- getIssueBranch <|||> getCurrentBranch'
+    openPullRequest sourceBranch
+  FinishCommand finishType issueString ->
+    run $ withIssueId issueString $
+    case finishType of
+      FinishWithPullRequest -> finishIssueWithPullRequest
+      FinishWithMerge       -> finishIssueWithMerge
+  CommitCommand issueString gitOptions -> run $ withIssueId issueString $ \issueId _ ->
+    liftIO
+      $ withSystemTempFile "agile-cli.gittemplate"
+      $ \tempPath tempHandle -> do
+        hPutStr tempHandle $ show issueId ++ " "
+        hClose tempHandle
+        rawSystem "git" $ ["commit", "-t", cs tempPath, "-e"] ++ gitOptions
 
-dispatch ("newnow" : args)  = handleCreateAndStart args
-dispatch ("co" : args)      = handleCheckout args
-dispatch ("pr" : args)      = handleCreatePullRequest args
-dispatch ("finish" : args)  = handleFinishIssue args
+printIssue :: IsIssue i => i -> AppM ()
+printIssue = liftIO . putStrLn . summarize
+
+startWorkOnIssue :: IssueBackend i => BranchStrategy -> IssueId (Issue i) -> i -> AppM ()
+startWorkOnIssue branchStrategy issueId issueBackend = do
+  branch <- createBranchForIssueKey branchStrategy issueId issueBackend
+  liftGit $ Git.checkoutBranch branch
+  startProgress' issueId issueBackend
+
+finishIssueWithPullRequest :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
+finishIssueWithPullRequest issueId issueBackend = do
+  gitFetch
+  remote <- view configRemote <$> getConfig
+  (,) <$> liftGit (Git.branchStatus remote $ show issueId)
+      <*> liftGit Git.workingCopyStatus
+  >>= \case
+    (NoUpstream, _) -> throwError $ UserInputException
+      "Your current branch has not been pushed! Cannot create pull request on remote server."
+    (NewCommits, Clean) -> confirmFinish  $
+      unlines' [ "You have new commits that haven't yet been pushed to the server."
+              , "Do you wish to continue?"
+              ]
+    (NewCommits, Dirty) -> confirmFinish $
+      unlines' [ "You have new commits and changes that haven't been comitted yet."
+              , "Do you wish to continue?"
+              ]
+    (_ , Dirty) -> confirmFinish $
+      unlines' [ "You have changes that haven't been comitted yet."
+              , "Do you wish to continue?"
+              ]
+    _           -> finishIssueWithPullRequest' issueId issueBackend
+  where
+    confirmFinish message = liftIO (askYesNoWithDefault False message)
+                        >>= bool (return ()) (finishIssueWithPullRequest' issueId issueBackend)
+
+finishIssueWithPullRequest' :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
+finishIssueWithPullRequest' issueId issueBackend = do
+  resolve issueId issueBackend
+  openPullRequest =<< branchForIssueKey issueId
+
+finishIssueWithMerge :: IssueBackend i => IssueId (Issue i) -> i -> AppM ()
+finishIssueWithMerge issueId issueBackend = do
+  config <- getConfig
+  jiraConfig <- takeJiraConfig config
+  let transition = jiraConfig^.jiraFinishMergeTransition
+  makeIssueTransition issueId transition issueBackend
+
+  source <- branchForIssueKey issueId
+  target <- liftGit $ config^.localDevelopBranch
+  liftGit $ Git.mergeBranch Git.NonFastForward source target
 
 configTest :: IO ()
-configTest = do
-  result <- runApp' . liftJira $ getRaw' "application-properties"
-  either handleError (const $ putStrLn "Config seems OK.") result
+configTest = runAppIO $ do
+  configParts <- EitherT searchConfigParts
+
+  liftIO $ do
+    putStrLn "> Using config files:"
+    mapM_ printConfigPath $ sort configParts
+    putStrLn ""
+    putStrLn "> Putting together config files..."
+
+  (_, config) <- EitherT readConfig'
+  liftIO . putStrLn . cs $ prettyEncode config
+
+  liftIO $ putStrLn "> Testing issue backend"
+  EitherT $ runApp' $ withIssueBackend testBackend
+
+  liftIO $ putStrLn "Config seems OK."
   where
-    handleError e = putStrLn $ "Error while checking config:\n" ++ show e
+    runAppIO = either handleAppException (const $ return ()) <=< runEitherT
+    printConfigPath = putStrLn . unConfigPath . configPartPath
 
-handleCreateIssue :: [String] -> IO ()
-handleCreateIssue (issueTypeName : summary) = run $ do
-  issueKey <- doCreateIssue issueTypeName (unwords summary)
-  liftIO $ handleOpenIssue [issueKey]
-
-handleShowIssue :: [String] -> IO ()
-handleShowIssue args = run . withIssueKey args $ \issueKey -> do
-  issue <- liftJira $ getIssue issueKey
-  liftIO $ print issue
-
-handleOpenIssue :: [String] -> IO ()
-handleOpenIssue args = run . withIssueKey args $
-  openInBrowser <=< issueBrowserUrl
-
-handleSearch :: [String] -> IO ()
-handleSearch (jql : _) = run $ do
-  issues <- liftJira $ searchIssues' jql
-  liftIO $ putStrLn $ unlines $ map showIssue $ sort issues
+showIssueTypes :: IO ()
+showIssueTypes = run $ withIssueBackend $ \issueBackend -> do
+  liftIO $ putStrLn "Available issue types:"
+  mapM_ printIssueType =<< getAvailableIssueTypes issueBackend
   where
-    showIssue i = i^.iKey ++ ": " ++ i^.iSummary
+    printIssueType t = liftIO . putStrLn $
+      issueTypeName t ++ ": " ++ issueTypeDescription t
 
-handleMyOpen :: IO ()
-handleMyOpen = run $ do
+cleanupLocalBranches :: IO ()
+cleanupLocalBranches = run $ liftGit Git.getLocalMergedBranches
+                         >>= filterM isClosed
+                         >>= mapM (liftGit . Git.removeBranch)
+  where
+    isClosed branch = onError (return False) $ withIssueBackend $ \backend -> do
+      issueId <- extractIssueId branch backend
+      issue   <- getIssueById issueId backend
+      return $ issueStatus issue == Closed
+
+checkoutBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM ()
+checkoutBranchForIssueKey branchStrategy issueId issueBackend =
+  getCheckoutAction issueId issueBackend >>= \case
+    LocalBranch branch  -> liftGit $ Git.checkoutBranch branch
+    RemoteBranch branch -> liftGit $ Git.checkoutRemoteBranch branch
+    CreateBranch        -> createBranch
+  where
+    createBranch =
+      liftIO (askYesNoWithDefault True "No local/remote branch found for this issue. Create new branch?") >>= \case
+        False -> return ()
+        True  -> createBranchForIssueKey branchStrategy issueId issueBackend
+             >>= liftGit . Git.checkoutBranch
+
+createBranchForIssueKey :: IssueBackend b => BranchStrategy -> IssueId (Issue b) -> b -> AppM BranchName
+createBranchForIssueKey branchStrategy issueId issueBackend = withAsyncGitFetch $ \asyncFetch -> do
+  issue <- getIssueById issueId issueBackend
+  let issueTypeName = show $ issueType issue
+  liftIO . putStrLn $ summarize issue
+  branchDescription <- liftIO $ toBranchName
+                  <$> askWithDefault (generateName $ suggestedBranchName issue)
+                      "Short description for branch?"
   config <- getConfig
-  let jql = "status = open and assignee = "
-          ++ config^.configJiraConfig.jiraUsername
-          ++ " and project = "
-          ++ config^.configJiraConfig.jiraProject
-  liftIO $ handleSearch [jql]
+  let branchPrefix = config^.configBranchPrefixMap.at issueTypeName.non (config^.configDefaultBranchPrefix)
+  let branchSuffix = show issueId ++ "-" ++ branchDescription
+  branchName <- liftGit . Git.parseBranchName' $ branchPrefix ++ branchSuffix
 
-handleStartIssue :: [String] -> IO ()
-handleStartIssue (issueKeyRep : _) = run $ do
-  issueKey <- parseIssueKey issueKeyRep
-  branch <- doCreateBranchForIssueKey issueKey
-  runGit' $ checkoutBranch branch
-  liftJira $ startProgress issueKey
+  liftIO $ wait asyncFetch
 
-handleStopProgress :: [String] -> IO ()
-handleStopProgress args = run . withIssueKey args $
-  liftJira . stopProgress
+  case branchStrategy of
+    BranchOffCurrent -> liftGit $ Git.newBranch branchName (Nothing :: Maybe BranchName)
+    BranchOffRemoteDevelop -> do
+      let remote = config^.configRemote
+      devBranch <- liftGit $ config^.configDevelopBranch.to Git.parseBranchName'
+      let baseBranchName = remote </> devBranch
+      liftGit $ Git.newBranch branchName (Just baseBranchName)
 
-handleResolveIssue :: [String] -> IO ()
-handleResolveIssue args = run . withIssueKey args $
-  liftJira . resolveIssue
-
-handleCloseIssue :: [String] -> IO ()
-handleCloseIssue args = run . withIssueKey args $
-  liftJira . closeIssue
-
-handleReopenIssue :: [String] -> IO ()
-handleReopenIssue args = run . withIssueKey args $
-  liftJira . reopenIssue
-
-handleCheckout :: [String] -> IO ()
-handleCheckout (issueKey : _) = run $
-  doCheckoutBranchForIssueKey =<< parseIssueKey issueKey
-
-handleCreateAndStart :: [String] -> IO ()
-handleCreateAndStart (issueTypeName : summary : _) = run $ do
-  issueKey <- doCreateIssue issueTypeName summary
-  liftIO $ handleStartIssue [issueKey] >> handleOpenIssue [issueKey]
-
-handleCreatePullRequest :: [String] -> IO ()
-handleCreatePullRequest args = run . withIssueKey args $ doOpenPullRequest
-
-handleFinishIssue :: [String] -> IO ()
-handleFinishIssue args = run . withIssueKey args $ \issueKey -> do
-  liftJira $ resolveIssue issueKey
-  doOpenPullRequest issueKey
-
-doCheckoutBranchForIssueKey :: IssueKey -> AppM RefName
-doCheckoutBranchForIssueKey issueKey = do
-  branch <- branchForIssueKey issueKey
-  runGit' $ checkoutBranch branch
-  return branch
-
-doCreateBranchForIssueKey :: IssueKey -> AppM RefName
-doCreateBranchForIssueKey issueKey = do
-  issue <- liftJira $ getIssue issueKey
-  let issueTypeName = issue^.iType.itName
-  branchDescription <- liftIO $ toBranchName <$> ask "Short description for branch?"
-  baseBranchName <- view configDevelopBranch <$> getConfig
-  let branchSuffix = view iKey issue ++ "-" ++ branchDescription
-      branchName = branchType issueTypeName ++ "/" ++ branchSuffix
-  runGit' $ newBranch branchName baseBranchName
-  return $ RefName branchName
+  return branchName
   where
-    branchType "Bug" = "bugfix"
-    branchType _     = "feature"
-    toBranchName = map (\c -> if isSpace c then '-' else c)
+    toBranchName "" = ""
+    toBranchName (c:cs)
+      | isConnectingChar c = '-':bns
+      | isAlphaNum c       = c:bns
+      | otherwise          = bns
+      where
+        isConnectingChar c = isSpace c || c `elem` ['-', '_']
+        bns = toBranchName cs
 
-doCreateIssue :: String -> String -> AppM String
-doCreateIssue issueTypeName summary = do
+    generateName = toBranchName . map toLower . take 30
+
+openPullRequest :: BranchName -> AppM ()
+openPullRequest source = do
   config <- getConfig
-  let project   = ProjectKey $ config^.configJiraConfig.jiraProject
-      issueType = parseIssueType issueTypeName
-  liftJira . createIssue $ IssueCreationData project issueType summary
+  target <- liftGit $ config^.localDevelopBranch
 
-doOpenPullRequest :: IssueKey -> AppM ()
-doOpenPullRequest issueKey = do
-  source <- branchForIssueKey issueKey
-  target <- view configDevelopBranch <$> getConfig
-  openPullRequest source (RefName target)
+  url    <- withPullRequestBackend $ createPullRequestUrl source target
+  openInBrowser url
 
---
+withAsyncGitFetch :: (Async () -> AppM b) -> AppM b
+withAsyncGitFetch = (=<< liftIO (async (run gitFetch)))
 
-issueBrowserUrl :: IssueKey -> AppM String
-issueBrowserUrl issue = do
-  baseUrl <- view (configJiraConfig.jiraBaseUrl) <$> getConfig
-  return $ baseUrl ++ "/browse/" ++ urlId issue
+gitFetch :: AppM ()
+gitFetch = do
+  remote <- view configRemoteName <$> getConfig
+  liftGit $ Git.fetch remote
 
 -- CLI parsing
 
-parseIssueType :: String -> IssueTypeIdentifier
-parseIssueType "b" = IssueTypeName "Bug"
-parseIssueType "f" = IssueTypeName "New Feature"
-parseIssueType "i" = IssueTypeName "Improvement"
-parseIssueType "t" = IssueTypeName "Task"
-parseIssueType s   = IssueTypeName s
+parseIssueType' :: IssueBackend ib => String -> ib -> AppM (IssueTypeIdentifier (Issue ib))
+parseIssueType' typeName issueBackend = do
+  aliasMap <- getIssueTypeAliasMap issueBackend
+  let resolvedName = Map.findWithDefault typeName typeName aliasMap
+  return $ toIssueTypeIdentifier resolvedName issueBackend
 
-currentIssueKey :: AppM IssueKey
-currentIssueKey = do
-  (RefName branchName) <- runGit' getCurrentBranch `orThrowM` branchException
-  extractIssueKey branchName `orThrow` parseException
-  where
-    extractIssueKey :: String -> Maybe IssueKey
-    extractIssueKey s = do
-      groups <-  snd <$> matchRegexPR "/(\\w+)-(\\d+)" s
-      key    <- lookup 1 groups
-      n      <- lookup 2 groups >>= readMaybe
-      return $ IssueKey key (IssueNumber n)
+resolveSearch :: IssueBackend ib => String -> ib -> AppM String
+resolveSearch s issueBackend = do
+  searchMap <- getSearchAliasMap issueBackend
+  return . trim $ Map.findWithDefault s s searchMap
 
-    branchException = UserInputException "You are not on a branch"
-    parseException  = UserInputException "Can't parse issue from current branch"
-
-withIssueKey :: [String] -> (IssueKey -> AppM a) -> AppM a
-withIssueKey [] =             (=<< currentIssueKey)
-withIssueKey (issueKey : _) = (=<< parseIssueKey issueKey)
-
-branchForIssueKey :: IssueKey -> AppM RefName
+branchForIssueKey :: IsIssueId i => i -> AppM BranchName
 branchForIssueKey issueKey = do
-  branches <- runGit' getBranches
-  find containsKey branches `orThrow` branchException
+  branches <- liftGit Git.getLocalBranches
+  find (matchesIssueKey issueKey) branches `orThrow` branchException
   where
-    containsKey (RefName s) = show issueKey `isInfixOf` s
     branchException = UserInputException $ "Branch for issue not found: " ++ show issueKey
+
+startProgress' :: IssueBackend ib => IssueId (Issue ib) -> ib -> AppM ()
+startProgress' issueId backend = do
+  issue <- getIssueById issueId backend
+  when (issueStatus issue /= InProgress) $
+    startProgress issueId backend
+
+withIssueId :: Maybe String -> (forall i. IssueBackend i => IssueId (Issue i) -> i -> AppM a) -> AppM a
+withIssueId Nothing k = withIssueBackend $ \backend -> do
+  branch  <- getCurrentBranch'
+  issueId <- extractIssueId branch backend <|||> getActiveIssueId backend
+  k issueId backend
+  where
+    getActiveIssueId backend = activeIssueId backend >>= \case
+      Nothing -> throwError $ UserInputException "No distinct active issue"
+      Just issueId -> do
+        liftIO . putStrLn $ "Using active issue: " ++ show issueId
+        return issueId
+
+withIssueId (Just issueString) k = withIssueBackend $ \backend -> do
+  issueId <- parseIssueId issueString backend
+  k issueId backend
+
+withIssue :: Maybe String -> (forall i. IssueBackend i => Issue i -> i -> AppM a) -> AppM a
+withIssue s k = withIssueId s $ \issueId backend -> do
+  issue <- getIssueById issueId backend
+  k issue backend
+
+matchesIssueKey :: (IsIssueId i, IsBranchName b) => i -> b -> Bool
+matchesIssueKey issueKey branch = (show issueKey ++ "-") `isInfixOf` toBranchString branch
+
+-- Checkout Status
+
+data CheckoutAction = LocalBranch BranchName
+                    | RemoteBranch RemoteBranchName
+                    | CreateBranch
+                      deriving (Show, Eq)
+
+getCheckoutAction :: IssueBackend b => IssueId (Issue b) -> b -> AppM CheckoutAction
+getCheckoutAction issueId _ =
+  let action = LocalBranch  <$$> localBranch
+          <||> RemoteBranch <$$> remoteBranch
+          <||> return (Just CreateBranch)
+  in  fromJust <$> action
+  where
+    localBranch = tryMaybe $ branchForIssueKey issueId
+    remoteBranch = do
+      gitFetch
+      remoteName     <- view configRemoteName <$> getConfig
+      remoteBranches <- filter (matchesRemote remoteName)
+                    <$> liftGit Git.getRemoteBranches
+      return $ find (matchesIssueKey issueId) remoteBranches
+      where
+        matchesRemote remoteName remoteBranch =
+          remoteName == show (Git.remoteName remoteBranch)
+
+-- Git Helpers
+
+getCurrentBranch' :: AppM BranchName
+getCurrentBranch' = liftGit Git.getCurrentBranch `orThrowM` branchException
+  where
+    branchException = UserInputException "You are not on a branch"
 
 -- App Monad
 
 run :: AppM a -> IO ()
-run m = runApp' m >>= either print (const $ return ())
+run m = runApp' m >>= either handleAppException (const $ return ())
 
 runApp' :: AppM a -> IO (Either AppException a)
 runApp' m = runEitherT $ do
-  (configPath, config) <- hoistEitherIO readConfig'
-  hoistEitherIO $ runApp configPath config m
+  (configPath, config) <- EitherT readConfig'
+  EitherT $ runApp configPath config m
 
-liftJira :: JiraM a -> AppM a
-liftJira m = do
-  config <- getConfig
-  jiraConfig <- liftIO $ getJiraConfig config
-  result <- liftIO $ runJira jiraConfig m
-  either (throwError . JiraApiException) return result
+-- Branch Config Helpers
 
-runGit' :: GitM a -> AppM a
-runGit' m = liftEitherIO $ mapLeft convertException <$> runGit m
+configRemote :: Getter Config Git.RemoteName
+configRemote = configRemoteName.to Git.RemoteName
+
+localDevelopBranch :: Getter Config (Git.GitM BranchName)
+localDevelopBranch = configDevelopBranch.to Git.parseBranchName'
+
+-- Exception Handling
+
+handleAppException :: AppException -> IO ()
+handleAppException exception = do
+  case exception of
+    IOException e ->
+      putStrLn "IOException:" >> putStrLn e
+    ConfigException s ->
+      putStrLn "Problem with config file:" >> putStrLn s
+    AuthException s ->
+      putStrLn "Authentication Error:" >> putStrLn s
+    GitException s ->
+      putStrLn "Git error:" >> putStrLn s
+    UserInputException s ->
+      putStrLn s
+    JiraApiException e -> case e of
+      Jira.JsonFailure s            -> putStrLn "JIRA API: failed to parse JSON:" >> putStrLn s
+      Jira.OtherException e         -> putStrLn "Fatal exception in JIRA API:"    >> print e
+      Jira.GenericFailure           -> putStrLn "Fatal exception in JIRA API"
+      Jira.BadRequestException info -> do
+        putStrLn "Bad request to JIRA API:"
+        print info
+        -- Show available issue types if issuetype key is the the error map
+        when (hasErrorField "issuetype" info) showIssueTypes
+
+  exitWith $ ExitFailure 1
   where
-    convertException (App.Git.GitException s) = App.Types.GitException s
+    hasErrorField key (Jira.BadRequestInfo _ errorMap) = Map.member key errorMap

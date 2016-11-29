@@ -16,65 +16,104 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     App.CLI
-                     , App.CLI.Parsers
+  exposed-modules:     App.Backends
+                     , App.Backends.Github
+                     , App.Backends.Jira
+                     , App.Backends.Jira.Parsers
+                     , App.Backends.Stash
+                     , App.Backends.Types
+                     , App.CLI
+                     , App.CLI.Options
                      , App.Config
+                     , App.ConfigBuilder
                      , App.Git
+                     , App.Git.Branch
+                     , App.Git.Core
+                     , App.Git.Remote
+                     , App.Git.WorkingCopy
                      , App.InitialSetup
-                     , App.Stash
                      , App.Types
                      , App.Util
-  build-depends:       base >=4.7 && <4.9
-                     , jira-api
-                     , authenticate-oauth
-                     , HsOpenSSL
-                     , crypto-pubkey-types
-                     , bytestring
-                     , curl
-                     , base64-bytestring
-                     , RSA
-                     , http-client
-                     , string-conversions
-                     , transformers
-                     , aeson
-                     , lens
-                     , directory
-                     , mtl
-                     , either
-                     , exceptions
-                     , process
-                     , aeson-pretty
-                     , unix
-                     , filepath
-                     , hit
-                     , shelly
-                     , text
-                     , regexpr
-                     , parsec
-                     , containers
+  build-depends:       base >=4.8 && <4.9
+                     , jira-api <0.2
+                     , authenticate-oauth >=1.5 && <2.0
+                     , HsOpenSSL >=0.11.1.1 && <1.0
+                     , crypto-pubkey-types >=0.4.3 && <1.0
+                     , bytestring >=0.10.6 && <1.0
+                     , curl >=1.3.8 && <2.0
+                     , base64-bytestring >=1.0.0.1 && <2.0
+                     , RSA >=2.2.0 && < 3.0
+                     , http-client >=0.4.31 && <1.0
+                     , http-client-tls >=0.2.4 && <1.0
+                     , http-types >=0.9.1 && <1.0
+                     , string-conversions >=0.4 && < 1.0
+                     , transformers >=0.4.2 && <1.0
+                     , aeson >=0.11.2.0 && <1.0
+                     , lens-aeson >=1.0.0.5 && <2.0
+                     , lens >=4.13 && <5.0
+                     , directory >= 1.2.2 && <2.0
+                     , mtl >=2.2.1 && <3.0
+                     , either >=4.4.1.1 && <5.0
+                     , exceptions >=0.8.3 && <1.0
+                     , process >=1.2.3 && <2.0
+                     , aeson-pretty >=0.7.2 && <1.0
+                     , unix >=2.7.1 && <3.0
+                     , filepath >=1.4 && <2.0
+                     , hit >=0.6.3 && <1.0
+                     , shelly >=1.6.8 && <2.0
+                     , temporary >=1.2.0.4 && <2.0
+                     , text >=1.2.2.1 && <2.0
+                     , regexpr >=0.5.4 && <1.0
+                     , parsec >=3.1.11 && <4.0
+                     , containers >=0.5.6 && <1.0
+                     , optparse-applicative >=0.12.1.0 && <1.0
+                     , async >=2.1.0 && <3.0
+                     , semigroups >=0.0.7 && <1.0
+                     , unordered-containers >=0.2.7.1 && <1.0
+                     , split >=0.2.3.1 && < 1.0
+                     , github >= 0.14.0 && <1.0
                      --, readline
+  extra-lib-dirs:      /usr/local/opt/openssl/lib
+  include-dirs:        /usr/local/opt/openssl/include
   default-language:    Haskell2010
 
 executable agile-cli
   main-is:             AgileCli.hs
-  -- other-extensions:
-  build-depends:       base >=4.7 && <4.9
+  build-depends:       base >=4.8 && <4.9
                      , agile-cli
   hs-source-dirs:      src-exec
   default-language:    Haskell2010
+  ghc-options:         -O2
 
 test-suite tests
-  type:              exitcode-stdio-1.0
-  hs-source-dirs:    test
-  main-is:           Tests.hs
-  build-depends:     base >=4.7 && <4.9
-                   , agile-cli
-                   , jira-api
-                   , parsec
-                   , HUnit
-                   , QuickCheck
-                   , test-framework
-                   , test-framework-quickcheck2
-                   , test-framework-hunit
-                   , checkers
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Tests.hs
+  other-modules:       ConfigTests
+                     , Git.BranchParserTests
+                     , Github.IntegrationTests
+                     , Github.RepositoryTests
+                     , IntegrationTests
+                     , ParserTests
+                     , UtilTests
+  build-depends:       HUnit
+                     , QuickCheck >=2.8.2 && <3.0
+                     , aeson >=0.11.2.0 && <1.0
+                     , agile-cli
+                     , base >=4.8 && <4.9
+                     , checkers >=0.4.5 && <1.0
+                     , directory >= 1.2.2 && <2.0
+                     , filepath >=1.4 && <2.0
+                     , github >= 0.14.0
+                     , jira-api
+                     , lens >=4.13 && <5.0
+                     , parsec >=3.1.11 && <4.0
+                     , semigroups >=0.0.7 && <1.0
+                     , shelly >=1.6.8 && <2.0
+                     , temporary >=1.2.0.4 && <2.0
+                     , test-framework >=0.8.1 && <1.0
+                     , test-framework-hunit >=0.3 && <1.0
+                     , test-framework-quickcheck2 >=0.3 && <1.0
+                     , text >=1.2.2.1 && <2.0
+                     , vector >=0.11 && <1.0
   default-language:  Haskell2010

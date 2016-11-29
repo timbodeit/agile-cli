@@ -1,159 +1,215 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module App.InitialSetup where
+module App.InitialSetup (runInitialConfiguration) where
 
 import           App.Config
+import           App.ConfigBuilder
 import           App.Types
 import           App.Util
 
-import           Control.Lens
-import qualified Data.ByteString         as BS
-import qualified Data.ByteString.Lazy    as LBS
-import           Data.Either.Combinators
+import           Control.Arrow              ((&&&))
+import           Control.Lens               hiding (set')
+import           Control.Monad              (when)
+import           Control.Monad.IO.Class     (liftIO)
+import           Control.Monad.Trans.Either
+import           Crypto.Types.PubKey.RSA    (PrivateKey (..))
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as LBS
 import           Data.List
-import           Data.Maybe
+import           Data.Maybe                 (isJust, isNothing)
 import           Data.String.Conversions
-import qualified Data.Text               as T
-import qualified Jira.API                as J
-import           Network.HTTP.Client
+import qualified Data.Text                  as T
+import qualified Jira.API                   as J
+import           Network.HTTP.Client        hiding (path)
+import           Network.HTTP.Client.TLS    (tlsManagerSettings)
 import           System.Directory
-import           System.Process
-import           Text.Read
+import           System.Exit                (exitSuccess)
 import           Web.Authenticate.OAuth
 
-doInitSetup :: IO ()
-doInitSetup = do
-  existingConfig <- readConfig'
-  case existingConfig of
-    Left _  -> doSetupConfigFromScratch
-    Right c -> doSetupFromExistingConfig c
+data ConfigurableBackend = Jira | Stash | Github deriving (Eq, Show)
 
-doSetupConfigFromScratch :: IO ()
-doSetupConfigFromScratch =
+runInitialConfiguration :: IO ()
+runInitialConfiguration =
+  readConfig' >>= \case
+    Left _  -> runConfigWizardFromScratch
+    Right c -> runConfigWizardFromExistingConfig c
+
+runConfigWizardFromScratch :: IO ()
+runConfigWizardFromScratch =
   runUserChoice
     "Please choose your preferred option to initialize your agile config:" $
     zip [ "Create a config file with default settings to adjust manually"
         , "Use the command-line wizard"
         ]
         [ dumpDefaultSettings
-        , runWizard
+        , runInteractiveConfigWizard
         ]
   where
     dumpDefaultSettings = do
-      writeConfigToLocalDir defaultConfig
-      putStrLn $ "Config written to " ++ configFileName ++ "."
-      putStrLn $ "Adjust the config file to your needs and call 'agile init'" ++
+      writeConfigTo preferredConfigFileName defaultConfig
+      putStrLn $ "Config written to " ++ preferredConfigFileName ++ "."
+      putStrLn $ "Adjust the config file to your needs and call 'agile init' " ++
                  "again to initialize the JIRA authentication."
 
-runWizard :: IO ()
-runWizard = do
-  config <- doSetupConfigInteractively
-  writeConfigToLocalDir config
-  doInitAuth config >>=
-    maybe handleAuthError writeConfigToLocalDir
+runInteractiveConfigWizard :: IO ()
+runInteractiveConfigWizard = do
+  config <- getConfigInteractively
+  let configPath = preferredConfigFileName
+  writeConfigTo configPath config
 
-doSetupConfigInteractively :: IO Config
-doSetupConfigInteractively = do
-  jiraBaseUrl       <- ask "JIRA Base URL?"
-  jiraUsername      <- ask "JIRA username?"
-  jiraProject       <- ask "JIRA project key?"
-  jiraConsumerKey   <- ask "JIRA OAuth consumer key?"
-  jiraSigningKey    <- ask "JIRA OAuth signing key?"
+  putStrLn ""
+  putStrLn $ "Config written to " ++ configPath
 
-  stashBaseUrl      <- ask "Stash Base URL?"
-  stashProject      <- ask "Stash project key?"
-  stashRepo         <- ask "Stash repo name?"
-  stashReviewers    <- ask "Stash reviewers (comma-separated)?" >$< parseCommaList
+  when (shouldPerformJiraAuth config) $
+    runJiraAuth config >>= either handleAppException (writeConfigTo preferredConfigFileName)
 
-  developBranch     <- ask "Git develop branch name?"
-  openCommand       <- ask "Command to open URLs? (e.g. open on OS X)"
-
-  let jiraConfig = JiraConfig jiraBaseUrl
-                              jiraUsername
-                              jiraProject
-                              jiraConsumerKey
-                              jiraSigningKey
-                              "" -- Access Token (unknown yet)
-                              "" -- Access Token Secret (unknown yet)
-
-  let stashConfig = StashConfig stashBaseUrl
-                                stashProject
-                                stashRepo
-                                stashReviewers
-
-  return $ Config jiraConfig
-                  stashConfig
-                  developBranch
-                  openCommand
+runConfigWizardFromExistingConfig :: (FilePath, Config) -> IO ()
+runConfigWizardFromExistingConfig (configPath, config) = do
+  isPreferredConfigPath <- doesFileExist preferredConfigFileName
+  runUserChoice question $ answers isPreferredConfigPath
   where
-    parseCommaList = map (trim . cs) . T.splitOn "," . cs
-
-doSetupFromExistingConfig :: (FilePath, Config) -> IO ()
-doSetupFromExistingConfig (configPath, config) =
-  if isAuthConfigured config
-  then let availableAnswers = if configPath == configFileName
-                              then drop 1 answers
-                              else answers
-       in runUserChoice question availableAnswers
-  else doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
-  where
-    question = unlines
+    question = unlines'
       [ "Config file with authentication info found at " ++ configPath
       , "What do you want to do?"
       ]
-    answers = zip
-      [ "Copy config to local directory"
-      , "Create a new config in the local directory using the wizard"
-      , "Re-authenticate with JIRA"
+    answers isPreferredConfigPath =
+      [ ( "Copy config to local directory"
+        , copyFile configPath preferredConfigFileName
+        ) | not isPreferredConfigPath
+      ] ++
+      [ ( "Create a new config in the local directory using the wizard"
+        , runInteractiveConfigWizard
+        )
+      ] ++
+      map (backendQuestion &&& backendAction) unconfiguredBackends ++
+      [ ( "(Re-)authenticate with JIRA"
+        , runJiraAuth config >>= either handleAppException (writeConfigTo configPath)
+        ) | isJust $ config^.configJiraConfig
+      ] ++
+      [ ( "Quit", exitSuccess)
       ]
-      [ copyFile configPath configFileName
-      , runWizard
-      , doInitAuth config >>= maybe handleAuthError (writeConfigTo configPath)
-      ]
+    backendQuestion backend = "Configure " ++ show backend ++ " backend"
+    backendAction backend = configureAndUpdate backend config >>= writeConfigTo configPath
+    unconfiguredBackends = [Jira   | isNothing $ config^.configJiraConfig] ++
+                           [Stash  | isNothing $ config^.configStashConfig] ++
+                           [Github | isNothing $ config^.configGithubConfig]
 
-doInitAuth :: Config -> IO (Maybe Config)
-doInitAuth config =
-  doGetAccessToken >$$< \(token, tokenSecret) ->
-      config & configJiraConfig.jiraOAuthAccessToken  .~ cs token
-             & configJiraConfig.jiraOAuthAccessSecret .~ cs tokenSecret
+getConfigInteractively :: IO Config
+getConfigInteractively = do
+  developBranch <- askWithDefault "develop" "Git develop branch name?"
+  remoteName    <- askWithDefault "origin"  "Name of the remote?"
+  openCommand   <- askWithDefault "open"    "Command to open URLs? (e.g. open on OS X)"
+
+  let intermediateConfigRef = defaultConfig { _configDevelopBranch  = developBranch
+                                            , _configRemoteName     = remoteName
+                                            , _configBrowserCommand = openCommand
+                                            }
+
+  backendsToConfigure <- nub <$> sequence [askIssueBackend, askPullRequestBackend]
+  let configModifiers = map configureAndUpdate backendsToConfigure
+  foldr (=<<) (return intermediateConfigRef) configModifiers
   where
-    doGetAccessToken :: IO (Maybe (BS.ByteString, BS.ByteString))
-    doGetAccessToken = do
-      manager <- newManager defaultManagerSettings
-      pk <- J.readPemPrivateKey =<< readFile (config^.configJiraConfig.jiraOAuthSigningKeyPath)
-      let oauth = J.getOAuth (config^.configJiraConfig.jiraBaseUrl)
-                           (config^.configJiraConfig.jiraOAuthConsumerKey)
-                           pk
+    askIssueBackend = userChoice "Which issue backend would you like to use?"
+      [("JIRA", Jira), ("Github", Github)]
+    askPullRequestBackend = userChoice "Which pull request backend would you like to use?"
+      [("Stash", Stash), ("Github", Github)]
+
+getJiraConfigInteractively :: IO JiraConfig
+getJiraConfigInteractively = do
+  baseUrl     <- ask "JIRA Base URL?"
+  username    <- ask "JIRA username?"
+  project     <- ask "JIRA project key?"
+  consumerKey <- ask "JIRA OAuth consumer key?"
+  signingKey  <- ask "JIRA OAuth signing key?"
+
+  return $ defaultJiraConfig { _jiraBaseUrl             = baseUrl
+                             , _jiraUsername            = username
+                             , _jiraProject             = project
+                             , _jiraOAuthConsumerKey    = consumerKey
+                             , _jiraOAuthSigningKeyPath = signingKey
+                             }
+
+getStashConfigInteractively :: IO StashConfig
+getStashConfigInteractively = do
+  baseUrl   <- ask "Stash Base URL?"
+  project   <- ask "Stash project key?"
+  repo      <- ask "Stash repo name?"
+  reviewers <- ask "Stash reviewers (comma-separated)?" >$< parseCommaList
+
+  return $ defaultStashConfig { _stashBaseUrl    = baseUrl
+                              , _stashProject    = project
+                              , _stashRepository = repo
+                              , _stashReviewers  = reviewers
+                              }
+  where
+    parseCommaList = map (trim . cs) . T.splitOn "," . cs
+
+getGithubConfigInteractively :: IO GithubConfig
+getGithubConfigInteractively = do
+  oAuthToken <- ask "Github OAuth token?"
+  return $ defaultGithubConfig { _githubOAuthToken = oAuthToken }
+
+runJiraAuth :: Config -> AppIO Config
+runJiraAuth config = runEitherT $ do
+  liftIO $ putStrLn "Performing JIRA OAuth authentication..."
+
+  jiraConfig  <- takeJiraConfig config
+  privateKey  <- EitherT . readPrivateKey $ jiraConfig^.jiraOAuthSigningKeyPath
+  accessToken <- EitherT $ doGetAccessToken jiraConfig privateKey
+  return $ uncurry updateConfig accessToken
+  where
+    updateConfig :: BS.ByteString -> BS.ByteString -> Config
+    updateConfig token tokenSecret =
+      config & configJiraConfig._Just.jiraOAuthAccessToken  .~ cs token
+             & configJiraConfig._Just.jiraOAuthAccessSecret .~ cs tokenSecret
+
+    doGetAccessToken :: JiraConfig -> PrivateKey -> AppIO (BS.ByteString, BS.ByteString)
+    doGetAccessToken jiraConfig pk = do
+      manager <- newManager tlsManagerSettings
+      let oauth = J.getOAuth (jiraConfig^.jiraBaseUrl)
+                             (jiraConfig^.jiraOAuthConsumerKey)
+                             pk
       requestToken <- getTemporaryCredential oauth manager
       let authUrl = authorizeUrl oauth requestToken
       putStrLn "Please open the following link in your browser and log in."
       putStrLn "Hit enter when you are finished."
       openInBrowser' authUrl config
       print authUrl
-      getChar
+      _ <- getChar
       accessToken <- getAccessToken oauth requestToken manager
-      return $ extractAccessToken accessToken
+      return $ toEither (ConfigException "Failed to extract access token")
+                        (extractAccessToken accessToken)
 
     extractAccessToken :: Credential -> Maybe (BS.ByteString, BS.ByteString)
     extractAccessToken credential =
       let tokenMap = unCredential credential
-          token =  view _2 <$> find (keyEquals "oauth_token") tokenMap
-          secret = view _2 <$> find (keyEquals "oauth_token_secret") tokenMap
+          token =  snd <$> find (keyEquals "oauth_token") tokenMap
+          secret = snd <$> find (keyEquals "oauth_token_secret") tokenMap
       in  (,) <$> token <*> secret
 
     keyEquals :: Eq a => a -> (a, b) -> Bool
     keyEquals r (a, _) = a == r
 
-isAuthConfigured :: Config -> Bool
-isAuthConfigured config =
-     config^.configJiraConfig.jiraOAuthAccessToken  /= ""
-  && config^.configJiraConfig.jiraOAuthAccessSecret /= ""
+isJiraAuthConfigured :: Config -> Bool
+isJiraAuthConfigured config =
+     config^.configJiraConfig._Just.jiraOAuthAccessToken  /= ""
+  && config^.configJiraConfig._Just.jiraOAuthAccessSecret /= ""
+
+shouldPerformJiraAuth :: Config -> Bool
+shouldPerformJiraAuth config = isJust (config^.configJiraConfig) && not (isJiraAuthConfigured config)
 
 writeConfigTo :: FilePath -> Config -> IO ()
-writeConfigTo path = LBS.writeFile path . prettyEncodeConfig
+writeConfigTo path = LBS.writeFile path . prettyEncode
 
-writeConfigToLocalDir :: Config -> IO ()
-writeConfigToLocalDir = writeConfigTo configFileName
+handleAppException :: AppException -> IO ()
+handleAppException (ConfigException s) = putStrLn s
+handleAppException e = print e
 
-handleAuthError :: IO ()
-handleAuthError = putStrLn "Authentication error. Please try again."
+configureAndUpdate :: ConfigurableBackend -> Config -> IO Config
+configureAndUpdate Jira config   = set' config configJiraConfig   <$> getJiraConfigInteractively
+configureAndUpdate Stash config  = set' config configStashConfig  <$> getStashConfigInteractively
+configureAndUpdate Github config = set' config configGithubConfig <$> getGithubConfigInteractively
+
+set' :: s -> ASetter s t a (Maybe b) -> b -> t
+set' o k v = o & k ?~ v

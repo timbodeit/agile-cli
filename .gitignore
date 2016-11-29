@@ -5,3 +5,7 @@ dist/
 keys/
 TAGS
 docsets/
+.stack-work/
+ghc-mod.cradle
+tmux.json
+.agile

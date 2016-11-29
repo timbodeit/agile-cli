@@ -1,0 +1,10 @@
+{
+  "DevelopBranch": "develop",
+  "JiraConfig": {
+    "Project": "AC"
+  },
+  "StashConfig": {
+    "Project": "ITO",
+    "Repository": "agile-cli"
+  }
+}

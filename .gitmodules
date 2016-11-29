@@ -1,0 +1,3 @@
+[submodule "jira-api"]
+	path = jira-api
+	url = git@github.com:dsmatter/jira-api.git
