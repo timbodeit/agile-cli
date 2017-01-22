@@ -35,7 +35,7 @@ data CLICommand = InitCommand
                 | ResolveCommand (Maybe String)
                 | CloseCommand (Maybe String)
                 | ReopenCommand (Maybe String)
-                | CheckoutCommand BranchStrategy String
+                | CheckoutCommand BranchStrategy (Maybe String)
                 | CreatePullRequestCommand (Maybe String)
                 | FinishCommand FinishType (Maybe String)
                 | CommitCommand (Maybe String) [String]
@@ -144,9 +144,7 @@ startCommandParser = StartCommand
 checkoutCommandParser :: Parser CLICommand
 checkoutCommandParser = CheckoutCommand
   <$> branchOffArgParser
-  <*> strArgument ( metavar "ISSUE"
-                 <> help "Issue key or number"
-                  )
+  <*> issueArgParser
 
 finishCommandParser :: Parser CLICommand
 finishCommandParser = FinishCommand
