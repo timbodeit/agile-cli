@@ -85,7 +85,11 @@ runCLI options = case options^.cliCommand of
   ReopenCommand issueString ->
     run $ withIssueId issueString reopen
   CheckoutCommand branchStrategy issueString ->
-    run $ withIssueId (Just issueString) (checkoutBranchForIssueKey branchStrategy)
+    run $ withIssueBackend $ \ib -> do
+      issueId <- case issueString of
+        Nothing -> getActiveIssueId ib
+        Just s  -> parseIssueId s ib
+      checkoutBranchForIssueKey branchStrategy issueId ib
   CreatePullRequestCommand issueString -> run $ do
     let getIssueBranch = withIssueId issueString $ const . branchForIssueKey
     sourceBranch <- getIssueBranch <|||> getCurrentBranch'
@@ -289,16 +293,16 @@ withIssueId Nothing k = withIssueBackend $ \backend -> do
   branch  <- getCurrentBranch'
   issueId <- extractIssueId branch backend <|||> getActiveIssueId backend
   k issueId backend
-  where
-    getActiveIssueId backend = activeIssueId backend >>= \case
-      Nothing -> throwError $ UserInputException "No distinct active issue"
-      Just issueId -> do
-        liftIO . putStrLn $ "Using active issue: " ++ show issueId
-        return issueId
-
 withIssueId (Just issueString) k = withIssueBackend $ \backend -> do
   issueId <- parseIssueId issueString backend
   k issueId backend
+
+getActiveIssueId :: IssueBackend ib => ib -> AppM (IssueId (Issue ib))
+getActiveIssueId backend = activeIssueId backend >>= \case
+  Nothing -> throwError $ UserInputException "No distinct active issue"
+  Just issueId -> do
+    liftIO . putStrLn $ "Using active issue: " ++ show issueId
+    return issueId
 
 withIssue :: Maybe String -> (forall i. IssueBackend i => Issue i -> i -> AppM a) -> AppM a
 withIssue s k = withIssueId s $ \issueId backend -> do
