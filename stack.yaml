@@ -6,24 +6,16 @@ resolver: lts-6.10
 ghc-options:
   agile-cli: -Werror -Wall -fno-warn-name-shadowing -fno-warn-orphans -fno-warn-type-defaults
 
-# Local packages, usually specified by relative directory name
-packages:
-- '.'
-
-# JIRA API library
-- location:
-      git: https://github.com/dsmatter/jira-api.git
-      commit: 2dabd33d800a3f5fa1b0c8bbe145ceb6fb0d2bed
-  extra-dep: true
-
-# Snapshot of github library (pre-version 0.14.0)
-- location:
-      git: https://github.com/phadej/github.git
-      commit: a31e3652d0dcfbc4a420b7363877e25b113b3d2b
-  extra-dep: true
-
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: [regexpr-0.5.4, mtlparse-0.1.4.0]
+extra-deps: 
+# JIRA API library
+- git: https://github.com/dsmatter/jira-api.git
+  commit: 2dabd33d800a3f5fa1b0c8bbe145ceb6fb0d2bed
+# Snapshot of github library (pre-version 0.14.0)
+- git: https://github.com/phadej/github.git
+  commit: a31e3652d0dcfbc4a420b7363877e25b113b3d2b
+- regexpr-0.5.4
+- mtlparse-0.1.4.0
 
 # Override default flag values for local packages and extra-deps
 flags:
